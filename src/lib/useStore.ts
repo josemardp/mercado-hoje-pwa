@@ -136,52 +136,57 @@ export function useDayState() {
 
   // ─── Load day state with LWW merge + carry over postponed ──────
   useEffect(() => {
-    if (!user) return;
-
-    if (dayChanged) {
-      setState(getTodayItems());
+    if (!user) {
       setLoading(false);
       return;
     }
 
+    const userId = user.id;
+
     async function load() {
+      let localItems: DayItemRecord[] = [];
+
       try {
         setLoading(true);
-        // Load from local DB first
-        let localItems = await db.dayItems.where('dayKey').equals(todayKey).toArray();
 
-        // ─── Day Transition: Carry over postponed items ───
-        // If today has no items yet, check if there are postponed items from the last active day
-        if (localItems.length === 0) {
-          const lastItem = await db.dayItems
+        localItems = await db.dayItems
+          .where('dayKey')
+          .equals(todayKey)
+          .and(item => item.userId === userId)
+          .toArray();
+
+        const lastItem = await db.dayItems
+          .where('dayKey')
+          .below(todayKey)
+          .and(item => item.userId === userId)
+          .reverse()
+          .first();
+
+        if (lastItem) {
+          const lastDayItems = await db.dayItems
             .where('dayKey')
-            .below(todayKey)
-            .reverse()
-            .first();
-
-          if (lastItem) {
-            const lastDayItems = await db.dayItems
-              .where('dayKey')
-              .equals(lastItem.dayKey)
-              .toArray();
-
-            const postponed = lastDayItems.filter(item => item.postponed && item.userId === user!.id);
-            if (postponed.length > 0) {
-              const now = Date.now();
-              const carriedOver = postponed.map(item => ({
+            .equals(lastItem.dayKey)
+            .and(item => item.userId === userId)
+            .toArray();
+          const postponed = lastDayItems.filter(item => item.postponed);
+          if (postponed.length > 0) {
+            const now = Date.now();
+            const alreadyToday = new Set(localItems.map(item => item.itemId));
+            const carriedOver = postponed
+              .filter(item => !alreadyToday.has(item.itemId))
+              .map(item => ({
                 dayKey: todayKey,
                 itemId: item.itemId,
                 checked: false,
                 postponed: false,
                 inToday: true,
                 updatedAt: now,
-                userId: user!.id,
+                userId,
               }));
 
-              // Save carried over items to local DB
+            if (carriedOver.length > 0) {
               await db.dayItems.bulkAdd(carriedOver);
 
-              // Push the added items to the local sync queue so they propagate online
               for (const item of carriedOver) {
                 await db.syncQueue.add({
                   type: 'unpostpone',
@@ -191,8 +196,7 @@ export function useDayState() {
                 });
               }
 
-              // Update localItems to match
-              localItems.push(...carriedOver);
+              localItems = [...localItems, ...carriedOver];
             }
           }
         }
@@ -201,49 +205,45 @@ export function useDayState() {
         const postponed: Record<string, boolean> = {};
         const inToday: Record<string, boolean> = {};
 
-        // Parse local items to state
         localItems.forEach(item => {
-          if (item.userId === user!.id) {
-            if (item.checked) checked[item.itemId] = true;
-            if (item.postponed) postponed[item.itemId] = true;
-            if (item.inToday) inToday[item.itemId] = true;
-          }
+          if (item.checked) checked[item.itemId] = true;
+          if (item.postponed) postponed[item.itemId] = true;
+          if (item.inToday) inToday[item.itemId] = true;
         });
+
         setState({ checked, postponed, inToday });
-
-        if (isOnline) {
-          try {
-            const remoteItems = await loadDayStateFromSupabase(todayKey, user!.id);
-            if (remoteItems) {
-              const merged = mergeDayItemsWithLWW(localItems, remoteItems);
-              
-              // Filter and save merged to local DB
-              const userMerged = merged.filter(item => item.userId === user!.id);
-              await db.dayItems.bulkPut(userMerged);
-
-              const mergedChecked: Record<string, boolean> = {};
-              const mergedPostponed: Record<string, boolean> = {};
-              const mergedInToday: Record<string, boolean> = {};
-
-              userMerged.forEach(item => {
-                if (item.checked) mergedChecked[item.itemId] = true;
-                if (item.postponed) mergedPostponed[item.itemId] = true;
-                if (item.inToday) mergedInToday[item.itemId] = true;
-              });
-
-              setState({ checked: mergedChecked, postponed: mergedPostponed, inToday: mergedInToday });
-              setSyncStatus('synced');
-              setTimeout(() => setSyncStatus('idle'), 2000);
-            }
-          } catch {
-            setSyncStatus('error');
-            setTimeout(() => setSyncStatus('idle'), 3000);
-          }
-        }
       } catch (err) {
         console.error('Failed to load day state:', err);
       } finally {
         setLoading(false);
+      }
+
+      if (isOnline) {
+        try {
+          const remoteItems = await loadDayStateFromSupabase(todayKey, userId);
+          if (remoteItems) {
+            const merged = mergeDayItemsWithLWW(localItems, remoteItems);
+            const userMerged = merged.filter(item => item.userId === userId);
+            await db.dayItems.bulkPut(userMerged);
+
+            const mergedChecked: Record<string, boolean> = {};
+            const mergedPostponed: Record<string, boolean> = {};
+            const mergedInToday: Record<string, boolean> = {};
+
+            userMerged.forEach(item => {
+              if (item.checked) mergedChecked[item.itemId] = true;
+              if (item.postponed) mergedPostponed[item.itemId] = true;
+              if (item.inToday) mergedInToday[item.itemId] = true;
+            });
+
+            setState({ checked: mergedChecked, postponed: mergedPostponed, inToday: mergedInToday });
+            setSyncStatus('synced');
+            setTimeout(() => setSyncStatus('idle'), 2000);
+          }
+        } catch {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }
       }
     }
 
@@ -345,6 +345,24 @@ export function useDayState() {
       if (isOnline) {
         atomicIncrementUseCount(itemId, user.id, 1).catch(() => {});
       }
+
+      await addToSyncQueueLocal({
+        type: 'mark',
+        dayKey: todayKey,
+        itemId,
+        useCount: updatedCount,
+        lastUsed: updatedTime,
+        timestamp: updatedTime,
+      });
+    }
+
+    if (!willBeChecked) {
+      await addToSyncQueueLocal({
+        type: 'unmark',
+        dayKey: todayKey,
+        itemId,
+        timestamp: Date.now(),
+      });
     }
 
     setState(newState);
@@ -354,13 +372,6 @@ export function useDayState() {
       checked: !!newState.checked[itemId],
       postponed: !!newState.postponed[itemId],
       inToday: !!newState.inToday[itemId],
-    });
-
-    await addToSyncQueueLocal({
-      type: willBeChecked ? 'mark' : 'unmark',
-      dayKey: todayKey,
-      itemId,
-      timestamp: Date.now(),
     });
 
     if (willBeChecked && 'vibrate' in navigator) {
@@ -478,6 +489,10 @@ export function useDayState() {
       itemId: item.id,
       itemName: item.name,
       category: item.category,
+      qty: item.qty,
+      emoji: item.emoji,
+      useCount: item.useCount,
+      lastUsed: item.lastUsed,
       timestamp: Date.now(),
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
@@ -526,72 +541,64 @@ export function useItems() {
     if (!user) return;
     try {
       setLoading(true);
-      // Initialize defaults if catalog is empty
-      await initializeDefaultItems(user.id);
-
       const allItems = await db.items.where('userId').equals(user.id).toArray();
       allItems.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
       setItems(allItems);
-
-      if (navigator.onLine) {
-        try {
-          const { data: remoteItems, error } = await supabase
-            .from('mh_items')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('use_count', { ascending: false });
-
-          if (!error && remoteItems && remoteItems.length > 0) {
-            const updatedItems = [...allItems];
-            for (const item of remoteItems) {
-              const localItemIdx = updatedItems.findIndex(i => i.id === item.id);
-              if (localItemIdx === -1) {
-                // Not found locally: insert
-                updatedItems.push({
-                  id: item.id as string,
-                  name: item.name as string,
-                  category: item.category as string,
-                  emoji: item.emoji as string | undefined,
-                  qty: Number(item.qty) || 1,
-                  useCount: Number(item.use_count) || 0,
-                  lastUsed: Number(item.last_used) || undefined,
-                  userId: item.user_id as string,
-                });
-              } else {
-                const localItem = updatedItems[localItemIdx];
-                const remoteLastUsed = Number(item.last_used) || 0;
-                const localLastUsed = localItem.lastUsed || 0;
-
-                if (remoteLastUsed > localLastUsed) {
-                  // Remote has a newer update: update ALL fields
-                  updatedItems[localItemIdx] = {
-                    id: item.id as string,
-                    name: item.name as string,
-                    category: item.category as string,
-                    emoji: item.emoji as string | undefined,
-                    qty: Number(item.qty) || 1,
-                    useCount: Number(item.use_count) || 0,
-                    lastUsed: remoteLastUsed || undefined,
-                    userId: item.user_id as string,
-                  };
-                }
-              }
-            }
-
-            // Sync merged list back to Dexie
-            await db.items.bulkPut(updatedItems);
-            updatedItems.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
-            setItems(updatedItems);
-          }
-        } catch {
-          // Ignored: keep local
-        }
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(msg);
+      setItems([]);
     } finally {
       setLoading(false);
+    }
+
+    if (navigator.onLine) {
+      try {
+        await initializeDefaultItems(user.id);
+
+        const { data: remoteItems, error } = await supabase
+          .from('mh_items')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('use_count', { ascending: false });
+
+        if (!error && remoteItems && remoteItems.length > 0) {
+          const updatedItems = await db.items.where('userId').equals(user.id).toArray();
+          const merged = [...updatedItems];
+
+          for (const item of remoteItems) {
+            const localItemIdx = merged.findIndex(i => i.id === item.id);
+            const remoteLastUsed = Number(item.last_used) || 0;
+            const remoteUseCount = Number(item.use_count) || 0;
+            const remoteRecord: ItemRecord = {
+              id: item.id as string,
+              name: item.name as string,
+              category: item.category as string,
+              emoji: item.emoji as string | undefined,
+              qty: Number(item.qty) || 1,
+              useCount: remoteUseCount,
+              lastUsed: remoteLastUsed || undefined,
+              userId: item.user_id as string,
+            };
+
+            if (localItemIdx === -1) {
+              merged.push(remoteRecord);
+            } else {
+              const localItem = merged[localItemIdx];
+              const localLastUsed = localItem.lastUsed || 0;
+              if (remoteLastUsed > localLastUsed) {
+                merged[localItemIdx] = remoteRecord;
+              }
+            }
+          }
+
+          merged.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
+          await db.items.bulkPut(merged);
+          setItems(merged);
+        }
+      } catch {
+        // Ignored: keep local
+      }
     }
   }, [user]);
 
@@ -669,8 +676,34 @@ export function useItems() {
             user_id: user.id,
           });
       } catch {
-        // Will be retried on catalog sync
+        await db.syncQueue.add({
+          type: 'add',
+          dayKey: getTodayKey(),
+          itemId: newItem.id,
+          itemName: newItem.name,
+          category: newItem.category,
+          qty: newItem.qty,
+          emoji: newItem.emoji,
+          useCount: newItem.useCount,
+          lastUsed: newItem.lastUsed,
+          timestamp: Date.now(),
+          attemptCount: 0,
+        });
       }
+    } else {
+      await db.syncQueue.add({
+        type: 'add',
+        dayKey: getTodayKey(),
+        itemId: newItem.id,
+        itemName: newItem.name,
+        category: newItem.category,
+        qty: newItem.qty,
+        emoji: newItem.emoji,
+        useCount: newItem.useCount,
+        lastUsed: newItem.lastUsed,
+        timestamp: Date.now(),
+        attemptCount: 0,
+      });
     }
 
     await loadItems();

@@ -2,8 +2,12 @@ import Dexie, { type Table } from 'dexie';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // ─── Supabase config ───────────────────────────────────────────────
-const SUPABASE_URL = 'https://uwqupggkfjqbkfdshzef.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cXVwZ2drZmpxYmtmZHNoemVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NzMwMzksImV4cCI6MjA5NTE0OTAzOX0.R5fZBHfw9_JCFjPNQi4kE9Dy5l6kaPcEnd2Lg1kJfzw';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase environment variables. Define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+}
 
 // Configured client using standard anon key
 export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -37,6 +41,10 @@ export interface SyncQueueEntry {
   itemId?: string; // UUID v4
   itemName?: string;
   category?: string;
+  qty?: number;
+  emoji?: string;
+  useCount?: number;
+  lastUsed?: number;
   timestamp: number;
   attemptCount?: number;
 }
@@ -245,9 +253,11 @@ export async function processSyncQueue(
                 id: entry.itemId,
                 name: entry.itemName,
                 category: entry.category,
-                qty: 1,
-                use_count: 1,
-                last_used: entry.timestamp,
+                emoji: entry.emoji || null,
+                qty: entry.qty || 1,
+                use_count: entry.useCount || 0,
+                last_used: entry.lastUsed || null,
+                updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
                 user_id: userId,
               }, { onConflict: 'id' });
             if (itemErr) throw new Error(itemErr.message);
@@ -272,6 +282,19 @@ export async function processSyncQueue(
             if (localDayItem) {
               const ok = await syncDayItemToSupabase(localDayItem);
               if (!ok) throw new Error('Failed to sync day item state');
+            }
+
+            if (entry.type === 'mark' && entry.useCount != null) {
+              const { error: itemErr } = await supabase
+                .from('mh_items')
+                .update({
+                  use_count: entry.useCount,
+                  last_used: entry.lastUsed || null,
+                  updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
+                })
+                .eq('id', entry.itemId)
+                .eq('user_id', userId);
+              if (itemErr) throw new Error(itemErr.message);
             }
           }
           successIds.push(entry.id!);
@@ -343,7 +366,7 @@ export async function syncCategoryToSupabase(itemId: string, userId: string, new
   try {
     const { error } = await supabase
       .from('mh_items')
-      .update({ category: newCategory })
+      .update({ category: newCategory, updated_at: new Date().toISOString() })
       .eq('id', itemId)
       .eq('user_id', userId);
 
