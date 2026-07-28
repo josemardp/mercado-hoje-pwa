@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import type { ManifestOptions } from 'vite-plugin-pwa'
 
 const manifest: Partial<ManifestOptions> = {
+  id: '/mercado-hoje-pwa/',
   name: 'Mercado de Hoje',
   short_name: 'Mercado',
   lang: 'pt-BR',
@@ -15,6 +16,15 @@ const manifest: Partial<ManifestOptions> = {
   display: 'standalone',
   background_color: '#FBF3E6',
   theme_color: '#FBF3E6',
+  shortcuts: [
+    {
+      name: 'Adicionar item',
+      short_name: 'Adicionar',
+      description: 'Abre o app com o campo de novo item pronto para digitar',
+      url: '/mercado-hoje-pwa/?action=add-item',
+      icons: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    },
+  ],
   icons: [
     {
       src: 'icons/icon-192.png',
@@ -50,7 +60,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' (not 'autoUpdate') so a new version waits for the user to
+      // confirm via the in-app banner instead of silently swapping assets
+      // underneath an open session.
+      registerType: 'prompt',
       base: '/mercado-hoje-pwa/',
       includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png'],
       manifest,

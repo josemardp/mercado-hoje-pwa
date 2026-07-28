@@ -770,25 +770,43 @@ export function useItems() {
       userId: user.id,
     };
 
-    // Add local
+    // Add local — the item is usable immediately after this.
     await db.items.add(newItem);
 
-    // Sync remote
-    if (navigator.onLine) {
-      try {
-        await supabase
-          .from('mh_items')
-          .insert({
-            id: newItem.id,
-            name: newItem.name,
+    // Sync remote in the background. The caller doesn't need this
+    // round-trip to finish (offline-first: local state is already correct),
+    // so don't block the UI on network latency here.
+    (async () => {
+      if (navigator.onLine) {
+        try {
+          await supabase
+            .from('mh_items')
+            .insert({
+              id: newItem.id,
+              name: newItem.name,
+              category: newItem.category,
+              emoji: newItem.emoji || null,
+              qty: newItem.qty || 1,
+              use_count: newItem.useCount,
+              last_used: newItem.lastUsed,
+              user_id: user.id,
+            });
+        } catch {
+          await db.syncQueue.add({
+            type: 'add',
+            dayKey: getTodayKey(),
+            itemId: newItem.id,
+            itemName: newItem.name,
             category: newItem.category,
-            emoji: newItem.emoji || null,
-            qty: newItem.qty || 1,
-            use_count: newItem.useCount,
-            last_used: newItem.lastUsed,
-            user_id: user.id,
+            qty: newItem.qty,
+            emoji: newItem.emoji,
+            useCount: newItem.useCount,
+            lastUsed: newItem.lastUsed,
+            timestamp: Date.now(),
+            attemptCount: 0,
           });
-      } catch {
+        }
+      } else {
         await db.syncQueue.add({
           type: 'add',
           dayKey: getTodayKey(),
@@ -803,23 +821,9 @@ export function useItems() {
           attemptCount: 0,
         });
       }
-    } else {
-      await db.syncQueue.add({
-        type: 'add',
-        dayKey: getTodayKey(),
-        itemId: newItem.id,
-        itemName: newItem.name,
-        category: newItem.category,
-        qty: newItem.qty,
-        emoji: newItem.emoji,
-        useCount: newItem.useCount,
-        lastUsed: newItem.lastUsed,
-        timestamp: Date.now(),
-        attemptCount: 0,
-      });
-    }
+      await loadItems();
+    })();
 
-    await loadItems();
     return uuid;
   }, [user, loadItems]);
 
