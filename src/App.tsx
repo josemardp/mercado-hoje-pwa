@@ -90,7 +90,19 @@ export default function App() {
     resetAll,
     addItemToToday,
     syncCategory,
+    stuckSyncCount,
+    retryStuckEntries,
   } = useDayState();
+
+  const [retryingStuck, setRetryingStuck] = useState(false);
+  const handleRetryStuckSync = useCallback(async () => {
+    setRetryingStuck(true);
+    try {
+      await retryStuckEntries();
+    } finally {
+      setRetryingStuck(false);
+    }
+  }, [retryStuckEntries]);
 
   const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems();
 
@@ -404,6 +416,20 @@ export default function App() {
             {loading ? 'carregando...' : `${checkedCount} de ${totalCount} no carrinho`}
           </span>
         </div>
+        {stuckSyncCount > 0 && (
+          <div className="stuck-sync-banner" role="alert">
+            <span>
+              ⚠️ {stuckSyncCount} {stuckSyncCount === 1 ? 'alteração não sincronizou' : 'alterações não sincronizaram'} depois de várias tentativas.
+            </span>
+            <button
+              className="stuck-sync-retry-btn"
+              onClick={handleRetryStuckSync}
+              disabled={retryingStuck}
+            >
+              {retryingStuck ? 'Tentando...' : 'Tentar de novo'}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ─── TABS ─── */}
