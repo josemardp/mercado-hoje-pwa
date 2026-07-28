@@ -273,7 +273,9 @@ async function remapItemId(oldId: string, newId: string): Promise<void> {
     await db.dayItems.bulkDelete(staleDayItems.map(d => [d.dayKey, d.itemId] as [string, string]));
   }
 
-  await db.syncQueue.where('itemId').equals(oldId).modify({ itemId: newId });
+  // 'itemId' isn't an indexed field on syncQueue, so .where() can't be used
+  // here — .filter() does a full scan, which is fine for a small local queue.
+  await db.syncQueue.filter(e => e.itemId === oldId).modify({ itemId: newId });
 }
 
 /**
