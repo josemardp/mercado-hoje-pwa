@@ -36,7 +36,7 @@ export interface DayItemRecord {
 
 export interface SyncQueueEntry {
   id?: number;
-  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'remove' | 'reset' | 'category';
+  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'reset' | 'category';
   dayKey: string;
   itemId?: string; // UUID v4
   itemName?: string;
@@ -105,7 +105,7 @@ export async function initializeDefaultItems(userId: string) {
         .order('use_count', { ascending: false });
 
       if (!error && remoteItems && remoteItems.length > 0) {
-        const localItems = remoteItems.map((item: Record<string, any>): ItemRecord => ({
+        const localItems = remoteItems.map((item: Record<string, unknown>): ItemRecord => ({
           id: item.id as string,
           name: item.name as string,
           category: item.category as string,
@@ -169,13 +169,13 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
 
     if (error || !data) return null;
 
-    return data.map((item: Record<string, any>): DayItemRecord => ({
+    return data.map((item: Record<string, unknown>): DayItemRecord => ({
       dayKey: item.day_key as string,
       itemId: item.item_id as string,
       checked: !!item.checked,
       postponed: !!item.postponed,
       inToday: !!item.in_today,
-      updatedAt: new Date(item.updated_at).getTime(),
+      updatedAt: new Date(item.updated_at as string).getTime(),
       userId: item.user_id as string,
     }));
   } catch {
@@ -213,13 +213,42 @@ export function mergeDayItemsWithLWW(
 }
 
 /**
+ * Fetch the canonical mh_items row and overwrite the local copy with it.
+ * Used when a conditional RPC rejects our write as older than what's
+ * already stored, so this device stops showing its own stale state.
+ */
+async function reconcileLocalItemFromRemote(itemId: string, userId: string): Promise<void> {
+  const { data: canonical } = await supabase
+    .from('mh_items')
+    .select('*')
+    .eq('id', itemId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (canonical) {
+    await db.items.put({
+      id: canonical.id as string,
+      name: canonical.name as string,
+      category: canonical.category as string,
+      emoji: canonical.emoji as string | undefined,
+      qty: Number(canonical.qty) || 1,
+      useCount: Number(canonical.use_count) || 0,
+      lastUsed: Number(canonical.last_used) || undefined,
+      userId: canonical.user_id as string,
+    });
+  }
+}
+
+/**
  * Sync a single day item record to Supabase.
  * Goes through upsert_day_item_if_newer so a stale write can never
- * overwrite a newer one already stored server-side.
+ * overwrite a newer one already stored server-side. If our write is the
+ * stale one, pull the canonical row back down so this device converges
+ * immediately instead of showing wrong state until the next full reload.
  */
 export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('upsert_day_item_if_newer', {
+    const { data: applied, error } = await supabase.rpc('upsert_day_item_if_newer', {
       p_day_key: item.dayKey,
       p_item_id: item.itemId,
       p_checked: item.checked,
@@ -229,7 +258,31 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
       p_user_id: item.userId,
     });
 
-    return !error;
+    if (error) return false;
+
+    if (applied === false) {
+      const { data: canonical } = await supabase
+        .from('mh_day_items')
+        .select('*')
+        .eq('day_key', item.dayKey)
+        .eq('item_id', item.itemId)
+        .eq('user_id', item.userId)
+        .maybeSingle();
+
+      if (canonical) {
+        await db.dayItems.put({
+          dayKey: canonical.day_key as string,
+          itemId: canonical.item_id as string,
+          checked: !!canonical.checked,
+          postponed: !!canonical.postponed,
+          inToday: !!canonical.in_today,
+          updatedAt: new Date(canonical.updated_at as string).getTime(),
+          userId: canonical.user_id as string,
+        });
+      }
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -269,7 +322,16 @@ async function remapItemId(oldId: string, newId: string): Promise<void> {
 
   const staleDayItems = await db.dayItems.where('itemId').equals(oldId).toArray();
   if (staleDayItems.length > 0) {
-    await db.dayItems.bulkPut(staleDayItems.map(d => ({ ...d, itemId: newId })));
+    // Don't blindly overwrite: the canonical id may already have a local
+    // record newer than the one we're remapping (e.g. pulled in by an
+    // earlier merge). Compare updatedAt before deciding which one wins.
+    for (const stale of staleDayItems) {
+      const remapped = { ...stale, itemId: newId };
+      const existingCanonical = await db.dayItems.get([stale.dayKey, newId]);
+      if (!existingCanonical || existingCanonical.updatedAt < remapped.updatedAt) {
+        await db.dayItems.put(remapped);
+      }
+    }
     await db.dayItems.bulkDelete(staleDayItems.map(d => [d.dayKey, d.itemId] as [string, string]));
   }
 
@@ -342,7 +404,7 @@ export async function processSyncQueue(
             }
 
             if (entry.type === 'mark' && entry.useCount != null) {
-              const { error: itemErr } = await supabase.rpc('update_item_use_count_if_newer', {
+              const { data: applied, error: itemErr } = await supabase.rpc('update_item_use_count_if_newer', {
                 p_id: entry.itemId,
                 p_user_id: userId,
                 p_use_count: entry.useCount,
@@ -350,6 +412,9 @@ export async function processSyncQueue(
                 p_updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
               });
               if (itemErr) throw new Error(itemErr.message);
+              if (applied === false) {
+                await reconcileLocalItemFromRemote(entry.itemId, userId);
+              }
             }
           }
           successIds.push(entry.id!);
@@ -357,11 +422,16 @@ export async function processSyncQueue(
         }
 
         case 'reset': {
+          // Only delete rows that existed as of the reset moment — a row
+          // created/updated by another device after that must survive,
+          // otherwise a reset queued while offline could wipe out data
+          // that device added later while this one was disconnected.
           const { error } = await supabase
             .from('mh_day_items')
             .delete()
             .eq('day_key', entry.dayKey)
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .lt('updated_at', new Date(entry.timestamp).toISOString());
           if (error) throw new Error(error.message);
           successIds.push(entry.id!);
           break;
@@ -388,46 +458,24 @@ export async function processSyncQueue(
 }
 
 /**
- * Sync entire catalog local items to Supabase
- */
-export async function syncItemsToSupabase(items: ItemRecord[]) {
-  try {
-    const records = items.map(item => ({
-      id: item.id,
-      name: item.name,
-      category: item.category,
-      emoji: item.emoji || null,
-      qty: item.qty || 1,
-      use_count: item.useCount || 0,
-      last_used: item.lastUsed || null,
-      user_id: item.userId,
-    }));
-
-    const { error } = await supabase
-      .from('mh_items')
-      .upsert(records, { onConflict: 'id' });
-
-    return !error;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Sync a single item's category change to Supabase.
  * Goes through update_item_category_if_newer so a stale queued correction
  * can never undo a more recent one made from another device.
  */
 export async function syncCategoryToSupabase(itemId: string, userId: string, newCategory: string, updatedAt: number = Date.now()): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('update_item_category_if_newer', {
+    const { data: applied, error } = await supabase.rpc('update_item_category_if_newer', {
       p_id: itemId,
       p_user_id: userId,
       p_category: newCategory,
       p_updated_at: new Date(updatedAt).toISOString(),
     });
 
-    return !error;
+    if (error) return false;
+    if (applied === false) {
+      await reconcileLocalItemFromRemote(itemId, userId);
+    }
+    return true;
   } catch {
     return false;
   }
@@ -453,7 +501,7 @@ export async function atomicIncrementUseCount(itemId: string, userId: string, in
       .single();
     if (readErr || !data) return false;
 
-    await supabase
+    const { error: updateErr } = await supabase
       .from('mh_items')
       .update({
         use_count: (data.use_count || 0) + increment,
@@ -462,7 +510,7 @@ export async function atomicIncrementUseCount(itemId: string, userId: string, in
       .eq('id', itemId)
       .eq('user_id', userId);
 
-    return true;
+    return !updateErr;
   } catch {
     return false;
   }

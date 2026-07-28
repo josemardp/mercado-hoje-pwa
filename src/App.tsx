@@ -120,7 +120,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('hoje');
   const [showIosInstallModal, setShowIosInstallModal] = useState(false);
   
-  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const todayKey = getTodayKey();
@@ -206,13 +205,22 @@ export default function App() {
     setInputValue('');
     setShowSuggestions(false);
 
-    await addItemToToday(item);
-
-    // Update locally & queue remote increment
-    await db.items.update(item.id, {
+    const updatedItem: ItemRecord = {
+      ...item,
       useCount: (item.useCount || 0) + 1,
       lastUsed: Date.now(),
+    };
+
+    // Bump the count locally FIRST, then hand the fresh values to
+    // addItemToToday — it queues an 'add' sync entry using whatever item
+    // object it's given, so a stale count here would leak into that entry
+    // and drift the remote value behind the local one.
+    await db.items.update(item.id, {
+      useCount: updatedItem.useCount,
+      lastUsed: updatedItem.lastUsed,
     });
+
+    await addItemToToday(updatedItem);
 
     showToast(`🛒 "${itemName}" na lista!`);
   }, [addItemToToday, showToast]);
@@ -279,8 +287,8 @@ export default function App() {
   }, [inputValue, items, handleSelectSuggestion, addItem, showToast, requestCategoryCorrection, addItemToToday, user]);
 
   const handleToggle = useCallback(async (item: ItemRecord) => {
-    const wasChecked = await toggleItem(item.id, item);
-    if (!wasChecked) {
+    const willBeChecked = await toggleItem(item.id, item);
+    if (willBeChecked) {
       showToast(`✅ ${item.name} — no carrinho!`);
     }
   }, [toggleItem, showToast]);
@@ -390,8 +398,15 @@ export default function App() {
               <div
                 className="ios-install-hint"
                 onClick={() => setShowIosInstallModal(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowIosInstallModal(true);
+                  }
+                }}
                 style={{ cursor: 'pointer' }}
                 role="button"
+                tabIndex={0}
                 aria-label="Como instalar"
               >
                 📲
@@ -460,7 +475,6 @@ export default function App() {
         <div className="add-section">
           <div className="add-input-wrap">
             <input
-              ref={inputRef}
               className="add-input"
               type="text"
               placeholder="Adicionar item..."
@@ -494,7 +508,14 @@ export default function App() {
                     key={item.id}
                     className={`autocomplete-item${isPostponed ? ' postponed' : ''}`}
                     onClick={() => handleSelectSuggestion(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectSuggestion(item);
+                      }
+                    }}
                     role="option"
+                    tabIndex={0}
                     aria-label={`${
                       isPostponed
                         ? 'Trazer de volta'

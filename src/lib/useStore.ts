@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
 import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
@@ -128,8 +128,12 @@ export function useDayState() {
   // Reflect stuck-entry count as soon as we know who's logged in, not only
   // after the first sync run this session.
   useEffect(() => {
-    if (user) refreshStuckSyncCount();
-  }, [user, refreshStuckSyncCount]);
+    if (!user) return;
+    (async () => {
+      const count = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+      setStuckSyncCount(count);
+    })();
+  }, [user]);
 
   // ─── Online/offline listener + sync queue reprocessing ──
   useEffect(() => {
@@ -154,21 +158,28 @@ export function useDayState() {
 
   // Process pending queue on mount or login if online
   useEffect(() => {
-    if (isOnline && user) {
-      processPendingQueue();
-    }
+    if (!(isOnline && user)) return;
+    (async () => {
+      await processPendingQueue();
+    })();
   }, [isOnline, user, processPendingQueue]);
 
   // ─── Load day state with LWW merge + carry over postponed ──────
   useEffect(() => {
     if (!user) {
-      setLoading(false);
+      (async () => {
+        setLoading(false);
+      })();
       return;
     }
 
     const userId = user.id;
+    let cancelled = false;
 
     async function load() {
+      // Deliberate safe fallback (not dead code): read in the online-merge
+      // block below even if the try block throws before ever assigning to it.
+      // eslint-disable-next-line no-useless-assignment
       let localItems: DayItemRecord[] = [];
 
       try {
@@ -236,20 +247,35 @@ export function useDayState() {
           if (item.inToday) inToday[item.itemId] = true;
         });
 
+        if (cancelled) return;
         setState({ checked, postponed, inToday });
       } catch (err) {
         console.error('Failed to load day state:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
 
       if (isOnline) {
         try {
           const remoteItems = await loadDayStateFromSupabase(todayKey, userId);
+          if (cancelled) return;
           if (remoteItems) {
-            const merged = mergeDayItemsWithLWW(localItems, remoteItems);
+            // Re-read local state fresh right before merging: the network
+            // request above may have taken a while, and the user could have
+            // acted on an item in the meantime. Merging against the stale
+            // `localItems` snapshot captured at the top of this function
+            // would silently revert that action.
+            const freshLocalItems = await db.dayItems
+              .where('dayKey')
+              .equals(todayKey)
+              .and(item => item.userId === userId)
+              .toArray();
+            if (cancelled) return;
+
+            const merged = mergeDayItemsWithLWW(freshLocalItems, remoteItems);
             const userMerged = merged.filter(item => item.userId === userId);
             await db.dayItems.bulkPut(userMerged);
+            if (cancelled) return;
 
             const mergedChecked: Record<string, boolean> = {};
             const mergedPostponed: Record<string, boolean> = {};
@@ -266,13 +292,18 @@ export function useDayState() {
             setTimeout(() => setSyncStatus('idle'), 2000);
           }
         } catch {
-          setSyncStatus('error');
-          setTimeout(() => setSyncStatus('idle'), 3000);
+          if (!cancelled) {
+            setSyncStatus('error');
+            setTimeout(() => setSyncStatus('idle'), 3000);
+          }
         }
       }
     }
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [todayKey, dayChanged, isOnline, user]);
 
   const saveSingleItemState = useCallback(async (itemId: string, itemState: Omit<DayItemRecord, 'dayKey' | 'itemId' | 'userId' | 'updatedAt'>) => {
@@ -469,6 +500,10 @@ export function useDayState() {
 
   const resetAll = useCallback(async () => {
     if (!user) return;
+    // Captured once and reused for both the direct delete and the queued
+    // fallback, so only rows that existed as of this exact moment are
+    // deleted — a row another device adds afterward must survive.
+    const resetTimestamp = Date.now();
     const newState = { checked: {}, postponed: {}, inToday: {} };
     setState(newState);
 
@@ -481,7 +516,8 @@ export function useDayState() {
           .from('mh_day_items')
           .delete()
           .eq('day_key', todayKey)
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .lt('updated_at', new Date(resetTimestamp).toISOString());
       } catch {
         // Ignored, sync queue will run
       }
@@ -490,7 +526,7 @@ export function useDayState() {
     await addToSyncQueueLocal({
       type: 'reset',
       dayKey: todayKey,
-      timestamp: Date.now(),
+      timestamp: resetTimestamp,
     });
   }, [addToSyncQueueLocal, todayKey, isOnline, user]);
 
@@ -553,6 +589,13 @@ export function useItems() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks whose data is currently "current" so a slow load() that started
+  // for a previous session can't apply its result after logout/user switch.
+  const currentUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentUserIdRef.current = user?.id ?? null;
+  }, [user]);
+
   // Auth changes listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -571,31 +614,40 @@ export function useItems() {
 
   const loadItems = useCallback(async () => {
     if (!user) return;
+    const requestUserId = user.id;
+    const isStale = () => currentUserIdRef.current !== requestUserId;
+
     try {
       setLoading(true);
       const allItems = await db.items.where('userId').equals(user.id).toArray();
+      if (isStale()) return;
       allItems.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
       setItems(allItems);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
-      setError(msg);
-      setItems([]);
+      if (!isStale()) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        setError(msg);
+        setItems([]);
+      }
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
 
     if (navigator.onLine) {
       try {
         await initializeDefaultItems(user.id);
+        if (isStale()) return;
 
         const { data: remoteItems, error } = await supabase
           .from('mh_items')
           .select('*')
           .eq('user_id', user.id)
           .order('use_count', { ascending: false });
+        if (isStale()) return;
 
         if (!error && remoteItems && remoteItems.length > 0) {
           const updatedItems = await db.items.where('userId').equals(user.id).toArray();
+          if (isStale()) return;
           const merged = [...updatedItems];
 
           for (const item of remoteItems) {
@@ -626,6 +678,7 @@ export function useItems() {
 
           merged.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
           await db.items.bulkPut(merged);
+          if (isStale()) return;
           setItems(merged);
         }
       } catch {
@@ -635,9 +688,10 @@ export function useItems() {
   }, [user]);
 
   useEffect(() => {
-    if (user) {
-      loadItems();
-    }
+    if (!user) return;
+    (async () => {
+      await loadItems();
+    })();
   }, [user, loadItems]);
 
   const addItem = useCallback(async (name: string, category: string, emoji?: string, qty?: number): Promise<string> => {
@@ -646,7 +700,7 @@ export function useItems() {
     // Check if item already exists locally by name (case-insensitive)
     const existing = await db.items
       .where('name')
-      .equals(name)
+      .equalsIgnoreCase(name)
       .and(x => x.userId === user.id)
       .first();
 
@@ -660,16 +714,43 @@ export function useItems() {
         lastUsed: updatedTime,
       });
 
+      const queueFallback = () => db.syncQueue.add({
+        type: 'add',
+        dayKey: getTodayKey(),
+        itemId: existing.id,
+        itemName: existing.name,
+        category,
+        qty: existing.qty,
+        emoji,
+        useCount: updatedCount,
+        lastUsed: updatedTime,
+        timestamp: updatedTime,
+        attemptCount: 0,
+      });
+
       if (navigator.onLine) {
-        await supabase
-          .from('mh_items')
-          .update({
-            category,
-            emoji,
-            use_count: updatedCount,
-            last_used: updatedTime,
-          })
-          .eq('id', existing.id);
+        try {
+          // Goes through the same conditional RPC as a fresh 'add' — an
+          // existing id just takes the "update if newer" branch, so a
+          // stale write here can never clobber a more recent change made
+          // from another device.
+          const { error } = await supabase.rpc('upsert_item_reconcile_name', {
+            p_id: existing.id,
+            p_name: existing.name,
+            p_category: category,
+            p_emoji: emoji || null,
+            p_qty: existing.qty || 1,
+            p_use_count: updatedCount,
+            p_last_used: updatedTime,
+            p_updated_at: new Date(updatedTime).toISOString(),
+            p_user_id: user.id,
+          });
+          if (error) throw new Error(error.message);
+        } catch {
+          await queueFallback();
+        }
+      } else {
+        await queueFallback();
       }
       await loadItems();
       return existing.id;
