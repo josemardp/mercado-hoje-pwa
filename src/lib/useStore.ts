@@ -164,6 +164,43 @@ export function useDayState() {
     })();
   }, [isOnline, user, processPendingQueue]);
 
+  // db.ts dispatches this when something outside this hook (useItems'
+  // addItem, initializeDefaultItems) enqueues sync entries this hook has
+  // no direct reference to — kick the queue instead of waiting for the
+  // next unrelated online/mount trigger.
+  useEffect(() => {
+    const handler = () => {
+      if (isOnline && user) processPendingQueue();
+    };
+    window.addEventListener('mh:queue-updated', handler);
+    return () => window.removeEventListener('mh:queue-updated', handler);
+  }, [isOnline, user, processPendingQueue]);
+
+  // db.ts dispatches this after remapItemId (name-collision reconciliation)
+  // moves an item to its canonical id. That only touches Dexie — this
+  // hook's own checked/postponed/inToday state is in React memory and
+  // would otherwise keep the stale id until the next full day-state
+  // reload, making the item vanish from every tab in the meantime.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { oldId, newId } = (e as CustomEvent<{ oldId: string; newId: string }>).detail;
+      setState(prev => {
+        const remapKey = (obj: Record<string, boolean>) => {
+          if (!(oldId in obj)) return obj;
+          const { [oldId]: value, ...rest } = obj;
+          return { ...rest, [newId]: value };
+        };
+        return {
+          checked: remapKey(prev.checked),
+          postponed: remapKey(prev.postponed),
+          inToday: remapKey(prev.inToday),
+        };
+      });
+    };
+    window.addEventListener('mh:item-remapped', handler);
+    return () => window.removeEventListener('mh:item-remapped', handler);
+  }, []);
+
   // ─── Load day state with LWW merge + carry over postponed ──────
   useEffect(() => {
     if (!user) {
@@ -617,6 +654,22 @@ export function useItems() {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // db.ts dispatches this after a name-collision remap. loadItems()'s own
+  // remote merge can race with remapItemId's Dexie cleanup and resurrect
+  // the old id as a spurious duplicate catalog entry (it has no dayItems
+  // row anymore, so it wouldn't show in any list, but it would show up
+  // twice in autocomplete) — delete it defensively and drop it from state
+  // regardless of which one actually won the race.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { oldId } = (e as CustomEvent<{ oldId: string; newId: string }>).detail;
+      db.items.delete(oldId).catch(() => {});
+      setItems(prev => prev.filter(i => i.id !== oldId));
+    };
+    window.addEventListener('mh:item-remapped', handler);
+    return () => window.removeEventListener('mh:item-remapped', handler);
   }, []);
 
   const loadItems = useCallback(async () => {

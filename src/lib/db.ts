@@ -167,6 +167,10 @@ export async function initializeDefaultItems(userId: string) {
         timestamp: now,
         attemptCount: 0,
       })));
+      // This runs from useItems, which has no reference to useDayState's
+      // processPendingQueue — without this, these entries would just sit
+      // until the next unrelated trigger (online event, reload, etc).
+      window.dispatchEvent(new Event('mh:queue-updated'));
     }
   }
 }
@@ -355,6 +359,12 @@ export async function remapItemId(oldId: string, newId: string): Promise<void> {
   // 'itemId' isn't an indexed field on syncQueue, so .where() can't be used
   // here — .filter() does a full scan, which is fine for a small local queue.
   await db.syncQueue.filter(e => e.itemId === oldId).modify({ itemId: newId });
+
+  // useDayState's React state (checked/postponed/inToday, keyed by item id)
+  // lives in a separate hook and isn't refreshed by the Dexie writes above.
+  // Without this, the just-remapped item can vanish from every tab until
+  // the next full day-state reload (mount/day-change/online toggle).
+  window.dispatchEvent(new CustomEvent('mh:item-remapped', { detail: { oldId, newId } }));
 }
 
 /**
