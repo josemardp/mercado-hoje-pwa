@@ -4,7 +4,7 @@ import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
   syncDayItemToSupabase, loadDayStateFromSupabase, mergeDayItemsWithLWW,
   processSyncQueue, atomicIncrementUseCount, syncCategoryToSupabase,
-  initializeDefaultItems,
+  initializeDefaultItems, MAX_SYNC_ATTEMPTS,
 } from './db';
 
 import { getTodayKey } from './categories';
@@ -26,6 +26,7 @@ export function useDayState() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [dayChanged, setDayChanged] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [stuckSyncCount, setStuckSyncCount] = useState(0);
 
   const todayKey = getTodayKey();
 
@@ -83,28 +84,52 @@ export function useDayState() {
     setState(getTodayItems());
   }, []);
 
+  const refreshStuckSyncCount = useCallback(async () => {
+    const count = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+    setStuckSyncCount(count);
+  }, []);
+
   const processPendingQueue = useCallback(async () => {
     if (!user) return;
-    const entries = await db.syncQueue.toCollection().sortBy('timestamp');
-    if (entries.length === 0) return;
+    const allEntries = await db.syncQueue.toCollection().sortBy('timestamp');
+    // Entries that already exhausted their retries are left alone here —
+    // they only move again via an explicit retryStuckEntries() call — so a
+    // permanently-broken entry doesn't hammer the API forever in silence.
+    const entries = allEntries.filter(e => (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
 
-    setSyncStatus('syncing');
-    const successIds = await processSyncQueue(user.id, entries);
+    if (entries.length > 0) {
+      setSyncStatus('syncing');
+      const successIds = await processSyncQueue(user.id, entries);
 
-    if (successIds.length > 0) {
       for (const id of successIds) {
         await db.syncQueue.delete(id);
       }
+
+      if (successIds.length === entries.length) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } else {
+        setSyncStatus('error');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      }
     }
 
-    if (successIds.length === entries.length) {
-      setSyncStatus('synced');
-      setTimeout(() => setSyncStatus('idle'), 2000);
-    } else {
-      setSyncStatus('error');
-      setTimeout(() => setSyncStatus('idle'), 3000);
+    await refreshStuckSyncCount();
+  }, [user, refreshStuckSyncCount]);
+
+  const retryStuckEntries = useCallback(async () => {
+    const stuck = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
+    for (const entry of stuck) {
+      await db.syncQueue.update(entry.id!, { attemptCount: 0 });
     }
-  }, [user]);
+    await processPendingQueue();
+  }, [processPendingQueue]);
+
+  // Reflect stuck-entry count as soon as we know who's logged in, not only
+  // after the first sync run this session.
+  useEffect(() => {
+    if (user) refreshStuckSyncCount();
+  }, [user, refreshStuckSyncCount]);
 
   // ─── Online/offline listener + sync queue reprocessing ──
   useEffect(() => {
@@ -327,6 +352,8 @@ export function useDayState() {
     newState.inToday = { ...newState.inToday };
 
     const willBeChecked = !newState.checked[itemId];
+    let updatedCount: number | undefined;
+    let updatedTime: number | undefined;
 
     if (newState.checked[itemId]) {
       delete newState.checked[itemId];
@@ -334,14 +361,28 @@ export function useDayState() {
       newState.checked[itemId] = true;
       newState.inToday[itemId] = false;
 
-      // Update local & remote catalog counts
-      const updatedCount = (itemRecord?.useCount || 0) + 1;
-      const updatedTime = Date.now();
+      // Update local catalog count first — local write must be complete
+      // and confirmed before any sync is triggered (item 3).
+      updatedCount = (itemRecord?.useCount || 0) + 1;
+      updatedTime = Date.now();
       await db.items.update(itemId, {
         useCount: updatedCount,
         lastUsed: updatedTime,
       });
+    }
 
+    setState(newState);
+
+    // Save individual day item state locally (and attempt direct remote
+    // sync) BEFORE queuing/triggering background reprocessing, so the
+    // queue never reads a not-yet-written local record.
+    await saveSingleItemState(itemId, {
+      checked: !!newState.checked[itemId],
+      postponed: !!newState.postponed[itemId],
+      inToday: !!newState.inToday[itemId],
+    });
+
+    if (willBeChecked) {
       if (isOnline) {
         atomicIncrementUseCount(itemId, user.id, 1).catch(() => {});
       }
@@ -352,11 +393,9 @@ export function useDayState() {
         itemId,
         useCount: updatedCount,
         lastUsed: updatedTime,
-        timestamp: updatedTime,
+        timestamp: updatedTime!,
       });
-    }
-
-    if (!willBeChecked) {
+    } else {
       await addToSyncQueueLocal({
         type: 'unmark',
         dayKey: todayKey,
@@ -364,15 +403,6 @@ export function useDayState() {
         timestamp: Date.now(),
       });
     }
-
-    setState(newState);
-
-    // Save individual day item state
-    await saveSingleItemState(itemId, {
-      checked: !!newState.checked[itemId],
-      postponed: !!newState.postponed[itemId],
-      inToday: !!newState.inToday[itemId],
-    });
 
     if (willBeChecked && 'vibrate' in navigator) {
       navigator.vibrate(30);
@@ -512,6 +542,8 @@ export function useDayState() {
     addItemToToday,
     syncCategory,
     processSyncQueue: processPendingQueue,
+    stuckSyncCount,
+    retryStuckEntries,
   };
 }
 

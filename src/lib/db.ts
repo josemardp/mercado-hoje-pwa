@@ -49,6 +49,10 @@ export interface SyncQueueEntry {
   attemptCount?: number;
 }
 
+// Entries that fail this many times stop being retried automatically and
+// are surfaced in the UI instead of failing silently forever.
+export const MAX_SYNC_ATTEMPTS = 5;
+
 // ─── Dexie local DB ────────────────────────────────────────────────
 class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
@@ -209,21 +213,21 @@ export function mergeDayItemsWithLWW(
 }
 
 /**
- * Sync a single day item record to Supabase
+ * Sync a single day item record to Supabase.
+ * Goes through upsert_day_item_if_newer so a stale write can never
+ * overwrite a newer one already stored server-side.
  */
 export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('mh_day_items')
-      .upsert({
-        day_key: item.dayKey,
-        item_id: item.itemId,
-        checked: item.checked,
-        postponed: item.postponed,
-        in_today: item.inToday,
-        updated_at: new Date(item.updatedAt).toISOString(),
-        user_id: item.userId,
-      }, { onConflict: 'user_id,day_key,item_id' });
+    const { error } = await supabase.rpc('upsert_day_item_if_newer', {
+      p_day_key: item.dayKey,
+      p_item_id: item.itemId,
+      p_checked: item.checked,
+      p_postponed: item.postponed,
+      p_in_today: item.inToday,
+      p_updated_at: new Date(item.updatedAt).toISOString(),
+      p_user_id: item.userId,
+    });
 
     return !error;
   } catch {
@@ -232,8 +236,52 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
 }
 
 /**
+ * Remap every local reference from an old (locally-generated) item id to
+ * the canonical remote id returned by upsert_item_reconcile_name, after a
+ * catalog name collision with another device. Dexie primary keys are
+ * immutable, so this is a delete+recreate under the new id, not an update.
+ */
+async function remapItemId(oldId: string, newId: string): Promise<void> {
+  const localItem = await db.items.get(oldId);
+  if (localItem) {
+    await db.items.delete(oldId);
+    // Adopt the canonical remote row's data rather than force our copy onto
+    // it: another device already created this named item first.
+    const { data: remoteItem } = await supabase
+      .from('mh_items')
+      .select('*')
+      .eq('id', newId)
+      .single();
+
+    await db.items.put(remoteItem
+      ? {
+          id: remoteItem.id as string,
+          name: remoteItem.name as string,
+          category: remoteItem.category as string,
+          emoji: remoteItem.emoji as string | undefined,
+          qty: Number(remoteItem.qty) || 1,
+          useCount: Number(remoteItem.use_count) || 0,
+          lastUsed: Number(remoteItem.last_used) || undefined,
+          userId: remoteItem.user_id as string,
+        }
+      : { ...localItem, id: newId });
+  }
+
+  const staleDayItems = await db.dayItems.where('itemId').equals(oldId).toArray();
+  if (staleDayItems.length > 0) {
+    await db.dayItems.bulkPut(staleDayItems.map(d => ({ ...d, itemId: newId })));
+    await db.dayItems.bulkDelete(staleDayItems.map(d => [d.dayKey, d.itemId] as [string, string]));
+  }
+
+  await db.syncQueue.where('itemId').equals(oldId).modify({ itemId: newId });
+}
+
+/**
  * Process local offline sync queue.
  * Returns only the list of successfully synchronized queue entry IDs.
+ * Entries that fail are left in the queue with attemptCount incremented;
+ * once MAX_SYNC_ATTEMPTS is reached they stop being auto-retried (see
+ * useStore's processPendingQueue) and are surfaced in the UI instead.
  */
 export async function processSyncQueue(
   userId: string,
@@ -246,24 +294,31 @@ export async function processSyncQueue(
       switch (entry.type) {
         case 'add': {
           if (entry.itemId && entry.itemName && entry.category) {
-            // Upsert catalog item
-            const { error: itemErr } = await supabase
-              .from('mh_items')
-              .upsert({
-                id: entry.itemId,
-                name: entry.itemName,
-                category: entry.category,
-                emoji: entry.emoji || null,
-                qty: entry.qty || 1,
-                use_count: entry.useCount || 0,
-                last_used: entry.lastUsed || null,
-                updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
-                user_id: userId,
-              }, { onConflict: 'id' });
+            let itemId = entry.itemId;
+            const updatedAtIso = new Date(entry.lastUsed || entry.timestamp).toISOString();
+
+            const { data: canonicalId, error: itemErr } = await supabase.rpc('upsert_item_reconcile_name', {
+              p_id: entry.itemId,
+              p_name: entry.itemName,
+              p_category: entry.category,
+              p_emoji: entry.emoji || null,
+              p_qty: entry.qty || 1,
+              p_use_count: entry.useCount || 0,
+              p_last_used: entry.lastUsed || null,
+              p_updated_at: updatedAtIso,
+              p_user_id: userId,
+            });
             if (itemErr) throw new Error(itemErr.message);
 
-            // Upsert day item state
-            const localDayItem = await db.dayItems.get([entry.dayKey, entry.itemId]);
+            if (canonicalId && canonicalId !== entry.itemId) {
+              // Another device already created an item with this name.
+              // Adopt its id instead of leaving two conflicting rows.
+              await remapItemId(entry.itemId, canonicalId as string);
+              itemId = canonicalId as string;
+            }
+
+            // Upsert day item state under the (possibly remapped) item id
+            const localDayItem = await db.dayItems.get([entry.dayKey, itemId]);
             if (localDayItem) {
               const ok = await syncDayItemToSupabase(localDayItem);
               if (!ok) throw new Error('Failed to sync day item');
@@ -285,15 +340,13 @@ export async function processSyncQueue(
             }
 
             if (entry.type === 'mark' && entry.useCount != null) {
-              const { error: itemErr } = await supabase
-                .from('mh_items')
-                .update({
-                  use_count: entry.useCount,
-                  last_used: entry.lastUsed || null,
-                  updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
-                })
-                .eq('id', entry.itemId)
-                .eq('user_id', userId);
+              const { error: itemErr } = await supabase.rpc('update_item_use_count_if_newer', {
+                p_id: entry.itemId,
+                p_user_id: userId,
+                p_use_count: entry.useCount,
+                p_last_used: entry.lastUsed || null,
+                p_updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
+              });
               if (itemErr) throw new Error(itemErr.message);
             }
           }
@@ -314,12 +367,8 @@ export async function processSyncQueue(
 
         case 'category': {
           if (entry.itemId && entry.category) {
-            const { error } = await supabase
-              .from('mh_items')
-              .update({ category: entry.category })
-              .eq('id', entry.itemId)
-              .eq('user_id', userId);
-            if (error) throw new Error(error.message);
+            const ok = await syncCategoryToSupabase(entry.itemId, userId, entry.category, entry.timestamp);
+            if (!ok) throw new Error('Failed to sync category');
           }
           successIds.push(entry.id!);
           break;
@@ -327,6 +376,9 @@ export async function processSyncQueue(
       }
     } catch (err) {
       console.error('Failed to process sync queue entry:', entry, err);
+      if (entry.id != null) {
+        await db.syncQueue.update(entry.id, { attemptCount: (entry.attemptCount || 0) + 1 });
+      }
     }
   }
 
@@ -361,14 +413,17 @@ export async function syncItemsToSupabase(items: ItemRecord[]) {
 
 /**
  * Sync a single item's category change to Supabase.
+ * Goes through update_item_category_if_newer so a stale queued correction
+ * can never undo a more recent one made from another device.
  */
-export async function syncCategoryToSupabase(itemId: string, userId: string, newCategory: string): Promise<boolean> {
+export async function syncCategoryToSupabase(itemId: string, userId: string, newCategory: string, updatedAt: number = Date.now()): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('mh_items')
-      .update({ category: newCategory, updated_at: new Date().toISOString() })
-      .eq('id', itemId)
-      .eq('user_id', userId);
+    const { error } = await supabase.rpc('update_item_category_if_newer', {
+      p_id: itemId,
+      p_user_id: userId,
+      p_category: newCategory,
+      p_updated_at: new Date(updatedAt).toISOString(),
+    });
 
     return !error;
   } catch {

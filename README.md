@@ -85,7 +85,7 @@ A cada push na branch `main`:
 pnpm install
 
 # Criar .env local (não commitado)
-# Copie .env.example e preencha as variáveis
+# Copie .env.example, renomeie para .env e preencha as variáveis
 
 pnpm dev        # modo desenvolvimento (http://localhost:5173)
 pnpm build      # build de produção
@@ -110,7 +110,9 @@ A tabela `mh_sync_queue` foi removida — a fila de sincronização existe apena
 
 ## Segurança
 
-- Nenhum segredo está em texto puro no código ou no histórico do Git.
+- Nenhum segredo está em texto puro no código, no `.env.example` ou no histórico da branch `main`.
 - A chave `anon` do Supabase é pública por design (é a chave de acesso não autenticado).
-- Acesso aos dados requer autenticação via `auth.uid()`. Sem login, todas as operações falham com erro de RLS.
+- Acesso aos dados requer autenticação via `auth.uid()`. Sem login, todas as operações falham com erro de RLS — testado diretamente contra a API de produção (INSERT sem sessão retorna `42501`/RLS).
 - A API key da OpenAI foi removida completamente. Classificação de itens é feita localmente.
+- Todo escrita remota (direta ou pela fila offline) passa por funções RPC que comparam `updated_at` no servidor antes de sobrescrever, para que uma escrita mais antiga nunca apague uma mais recente.
+- **Incidente histórico**: uma versão anterior do projeto usava um `secret_token` compartilhado (em vez de autenticação real), e esse token chegou a ser commitado em texto puro. O esquema de `secret_token` foi completamente removido do banco (tabelas antigas derrubadas) e a branch `main` foi recriada sem esse histórico. Um artefato de build antigo com o token ainda podia existir na branch `gh-pages` (não usada pelo deploy atual, que roda via GitHub Actions) até a limpeza dessa branch.
