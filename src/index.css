@@ -167,7 +167,7 @@ header { padding: calc(6px + env(safe-area-inset-top, 0px)) 22px 18px; }
   font-size: 1.125rem;
   cursor: pointer;
   transition: transform .15s var(--ease-spring), box-shadow .2s;
-  box-shadow: 0 2px 8px rgba(47, 158, 68, .3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--green) 30%, transparent);
 }
 .install-btn:hover { transform: scale(1.05); }
 .install-btn:active { transform: scale(.95); }

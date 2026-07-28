@@ -69,8 +69,12 @@ export default defineConfig({
       manifest,
       workbox: {
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
+        // Deliberately NOT skipWaiting/clientsClaim: with registerType
+        // 'prompt', the new worker must stay in "waiting" until the user
+        // taps "Atualizar" (updateServiceWorker(true) sends the skip-
+        // waiting message itself) — setting these here would activate it
+        // immediately and the update banner would never have anything to
+        // offer.
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         runtimeCaching: [

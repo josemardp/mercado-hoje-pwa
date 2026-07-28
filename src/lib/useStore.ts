@@ -4,7 +4,7 @@ import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
   syncDayItemToSupabase, loadDayStateFromSupabase, mergeDayItemsWithLWW,
   processSyncQueue, atomicIncrementUseCount, syncCategoryToSupabase,
-  initializeDefaultItems, MAX_SYNC_ATTEMPTS,
+  initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
 } from './db';
 
 import { getTodayKey } from './categories';
@@ -390,7 +390,14 @@ export function useDayState() {
       delete newState.checked[itemId];
     } else {
       newState.checked[itemId] = true;
-      newState.inToday[itemId] = false;
+      // NOTE: inToday stays true — checking an item means "done", not
+      // "no longer part of today's list". Setting it false here made the
+      // item vanish from allItemsForDay (items.filter(inToday)), which
+      // concludedItems/concludedByCategory are also derived from — so the
+      // Concluídos tab could never show anything a user had just checked.
+      // "Hoje" already correctly hides checked items via the separate
+      // !state.checked filter in pendingByCategory, so this was never
+      // needed for that side either.
 
       // Update local catalog count first — local write must be complete
       // and confirmed before any sync is triggered (item 3).
@@ -734,7 +741,7 @@ export function useItems() {
           // existing id just takes the "update if newer" branch, so a
           // stale write here can never clobber a more recent change made
           // from another device.
-          const { error } = await supabase.rpc('upsert_item_reconcile_name', {
+          const { data: canonicalId, error } = await supabase.rpc('upsert_item_reconcile_name', {
             p_id: existing.id,
             p_name: existing.name,
             p_category: category,
@@ -746,6 +753,9 @@ export function useItems() {
             p_user_id: user.id,
           });
           if (error) throw new Error(error.message);
+          if (canonicalId && canonicalId !== existing.id) {
+            await remapItemId(existing.id, canonicalId as string);
+          }
         } catch {
           await queueFallback();
         }
@@ -779,18 +789,26 @@ export function useItems() {
     (async () => {
       if (navigator.onLine) {
         try {
-          await supabase
-            .from('mh_items')
-            .insert({
-              id: newItem.id,
-              name: newItem.name,
-              category: newItem.category,
-              emoji: newItem.emoji || null,
-              qty: newItem.qty || 1,
-              use_count: newItem.useCount,
-              last_used: newItem.lastUsed,
-              user_id: user.id,
-            });
+          // A plain .insert() here would silently resolve with an unchecked
+          // {error} on a name collision (Supabase doesn't throw for that),
+          // so two devices creating the same new item close together would
+          // each keep their own local id forever. Go through the same
+          // reconcile RPC the offline queue uses instead.
+          const { data: canonicalId, error } = await supabase.rpc('upsert_item_reconcile_name', {
+            p_id: newItem.id,
+            p_name: newItem.name,
+            p_category: newItem.category,
+            p_emoji: newItem.emoji || null,
+            p_qty: newItem.qty || 1,
+            p_use_count: newItem.useCount,
+            p_last_used: newItem.lastUsed,
+            p_updated_at: new Date(newItem.lastUsed || Date.now()).toISOString(),
+            p_user_id: user.id,
+          });
+          if (error) throw new Error(error.message);
+          if (canonicalId && canonicalId !== newItem.id) {
+            await remapItemId(newItem.id, canonicalId as string);
+          }
         } catch {
           await db.syncQueue.add({
             type: 'add',

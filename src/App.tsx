@@ -6,7 +6,9 @@ import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
 import { classifyItem } from './lib/classifyCategory';
 
-const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L20 6" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// stroke uses var(--on-accent), not a hardcoded white: in dark mode the
+// checked category color is a bright tint, and white-on-bright fails contrast.
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L20 6" stroke="var(--on-accent)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 type TabKey = 'hoje' | 'concluidos' | 'proximo';
 
@@ -130,15 +132,16 @@ export default function App() {
   const addInputRef = useRef<HTMLInputElement>(null);
 
   // PWA manifest shortcut ("Adicionar item", long-press the app icon) lands
-  // here with ?action=add-item — focus the add field once logged in and
-  // rendered (not immediately: if login hasn't resolved yet, wait for it).
+  // here with ?action=add-item. Wait for auth to resolve either way: if
+  // logged in, focus the add field; if not (session expired/never logged
+  // in), still strip the param so it doesn't linger in the URL forever.
   useEffect(() => {
-    if (!user) return;
+    if (stateLoading) return;
     if (new URLSearchParams(window.location.search).get('action') === 'add-item') {
-      addInputRef.current?.focus();
+      if (user) addInputRef.current?.focus();
       window.history.replaceState(null, '', window.location.pathname);
     }
-  }, [user]);
+  }, [user, stateLoading]);
 
   const todayKey = getTodayKey();
   const dateStr = formatDateBR(todayKey);
