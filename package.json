@@ -13,7 +13,8 @@
     "@supabase/supabase-js": "^2.110.8",
     "dexie": "^4.4.4",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "workbox-window": "^7.4.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

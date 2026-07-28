@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useDayState, useItems } from './lib/useStore';
 import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/categories';
 import { db, type ItemRecord } from './lib/db';
@@ -15,7 +16,7 @@ const TABS: { key: TabKey; label: string; emoji: string }[] = [
   { key: 'proximo', label: 'Próximo', emoji: '🕒' },
 ];
 
-function ItemRow({
+const ItemRow = memo(function ItemRow({
   item,
   cat,
   checked,
@@ -26,19 +27,19 @@ function ItemRow({
   item: ItemRecord;
   cat: (typeof CATEGORIES)[number];
   checked: boolean;
-  onToggle: () => void;
-  onPostpone?: () => void;
+  onToggle: (item: ItemRecord) => void;
+  onPostpone?: (item: ItemRecord) => void;
   showPostpone?: boolean;
 }) {
   return (
     <div
       className={`item${checked ? ' checked' : ''}`}
       style={{ '--cat-color': cat.color, '--cat-bg': cat.bgColor } as React.CSSProperties}
-      onClick={onToggle}
+      onClick={() => onToggle(item)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onToggle();
+          onToggle(item);
         }
       }}
       role="checkbox"
@@ -55,13 +56,13 @@ function ItemRow({
           className="postpone-btn"
           onClick={(e) => {
             e.stopPropagation();
-            onPostpone();
+            onPostpone(item);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               e.stopPropagation();
-              onPostpone();
+              onPostpone(item);
             }
           }}
           title="Adiar para amanhã"
@@ -74,7 +75,7 @@ function ItemRow({
       )}
     </div>
   );
-}
+});
 
 export default function App() {
   const {
@@ -106,6 +107,11 @@ export default function App() {
 
   const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems();
 
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
+
   const [email, setEmail] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authSent, setAuthSent] = useState(false);
@@ -121,6 +127,18 @@ export default function App() {
   const [showIosInstallModal, setShowIosInstallModal] = useState(false);
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const addInputRef = useRef<HTMLInputElement>(null);
+
+  // PWA manifest shortcut ("Adicionar item", long-press the app icon) lands
+  // here with ?action=add-item — focus the add field once logged in and
+  // rendered (not immediately: if login hasn't resolved yet, wait for it).
+  useEffect(() => {
+    if (!user) return;
+    if (new URLSearchParams(window.location.search).get('action') === 'add-item') {
+      addInputRef.current?.focus();
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [user]);
 
   const todayKey = getTodayKey();
   const dateStr = formatDateBR(todayKey);
@@ -132,10 +150,15 @@ export default function App() {
   }, []);
 
   // Filter items that are explicitly in today's shopping list
-  const allItemsForDay = items.filter(i => !!state.inToday[i.id]);
+  const allItemsForDay = useMemo(
+    () => items.filter(i => !!state.inToday[i.id]),
+    [items, state.inToday],
+  );
 
-  const checked = allItemsForDay.filter(i => state.checked[i.id]);
-  const isComplete = checked.length === allItemsForDay.length && allItemsForDay.length > 0;
+  const isComplete = useMemo(() => {
+    const checkedCount = allItemsForDay.filter(i => state.checked[i.id]).length;
+    return checkedCount === allItemsForDay.length && allItemsForDay.length > 0;
+  }, [allItemsForDay, state.checked]);
 
   useEffect(() => {
     if (isComplete) {
@@ -308,30 +331,36 @@ export default function App() {
   const totalCount = allItemsForDay.length;
   const progressPct = totalCount ? (checkedCount / totalCount) * 100 : 0;
 
-  const pendingByCategory = CATEGORIES
+  const pendingByCategory = useMemo(() => CATEGORIES
     .map(cat => ({
       cat,
       items: allItemsForDay.filter(i => i.category === cat.key && !state.checked[i.id]),
       total: allItemsForDay.filter(i => i.category === cat.key).length,
     }))
-    .filter(g => g.items.length > 0);
+    .filter(g => g.items.length > 0), [allItemsForDay, state.checked]);
 
-  const concludedByCategory = CATEGORIES
+  const concludedByCategory = useMemo(() => CATEGORIES
     .map(cat => ({
       cat,
       items: allItemsForDay.filter(i => i.category === cat.key && state.checked[i.id]),
     }))
-    .filter(g => g.items.length > 0);
+    .filter(g => g.items.length > 0), [allItemsForDay, state.checked]);
 
-  const postponedByCategory = CATEGORIES
+  const postponedByCategory = useMemo(() => CATEGORIES
     .map(cat => ({
       cat,
       items: items.filter(i => i.category === cat.key && state.postponed[i.id]),
     }))
-    .filter(g => g.items.length > 0);
+    .filter(g => g.items.length > 0), [items, state.postponed]);
 
-  const concludedItems = allItemsForDay.filter(i => state.checked[i.id]);
-  const postponedItems = items.filter(i => state.postponed[i.id]);
+  const concludedItems = useMemo(
+    () => allItemsForDay.filter(i => state.checked[i.id]),
+    [allItemsForDay, state.checked],
+  );
+  const postponedItems = useMemo(
+    () => items.filter(i => state.postponed[i.id]),
+    [items, state.postponed],
+  );
 
   const { isInstallable, isIOS, install: installApp } = useInstallPrompt();
 
@@ -445,6 +474,17 @@ export default function App() {
             </button>
           </div>
         )}
+        {needRefresh && (
+          <div className="update-banner" role="status">
+            <span>✨ Nova versão disponível.</span>
+            <button
+              className="update-banner-btn"
+              onClick={() => updateServiceWorker(true)}
+            >
+              Atualizar
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ─── TABS ─── */}
@@ -475,6 +515,7 @@ export default function App() {
         <div className="add-section">
           <div className="add-input-wrap">
             <input
+              ref={addInputRef}
               className="add-input"
               type="text"
               placeholder="Adicionar item..."
@@ -615,8 +656,8 @@ export default function App() {
                     item={item}
                     cat={cat}
                     checked={false}
-                    onToggle={() => handleToggle(item)}
-                    onPostpone={() => handlePostpone(item)}
+                    onToggle={handleToggle}
+                    onPostpone={handlePostpone}
                     showPostpone
                   />
                 ))}
@@ -644,7 +685,7 @@ export default function App() {
                     item={item}
                     cat={cat}
                     checked={true}
-                    onToggle={() => handleToggle(item)}
+                    onToggle={handleToggle}
                     showPostpone={false}
                   />
                 ))}
@@ -742,12 +783,14 @@ export default function App() {
         </div>
       )}
 
-      <div className={`celebration${celebrationShow ? ' show' : ''}`}>{celebration}</div>
+      <div className={`celebration${celebrationShow ? ' show' : ''}`} role="status" aria-live="polite">{celebration}</div>
     </div>
   );
 }
 
 function burstConfetti() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   const emojis = ['🎉', '🍓', '🍌', '✨', '🛒'];
   for (let i = 0; i < 12; i++) {
     const el = document.createElement('div');

@@ -6,12 +6,15 @@ export interface Category {
   bgColor: string;
 }
 
+// Colors reference CSS custom properties (defined in index.css :root and
+// overridden under prefers-color-scheme: dark) instead of literal hex, so
+// category accents stay WCAG-AA-safe and legible in both themes.
 export const CATEGORIES: Category[] = [
-  { key: 'frutas', name: 'Frutas', emoji: '🍇', color: '#2F9E44', bgColor: '#E7F5EA' },
-  { key: 'bebidas', name: 'Bebidas', emoji: '🥤', color: '#1E88A8', bgColor: '#E4F2F6' },
-  { key: 'mercearia', name: 'Mercearia', emoji: '🛒', color: '#C98A2C', bgColor: '#FBF0DC' },
-  { key: 'casa', name: 'Casa & Higiene', emoji: '🧻', color: '#7C5CBF', bgColor: '#F1ECFA' },
-  { key: 'outros', name: 'Outros', emoji: '🎈', color: '#D6488A', bgColor: '#FBEAF1' },
+  { key: 'frutas', name: 'Frutas', emoji: '🍇', color: 'var(--cat-frutas)', bgColor: 'var(--cat-frutas-bg)' },
+  { key: 'bebidas', name: 'Bebidas', emoji: '🥤', color: 'var(--cat-bebidas)', bgColor: 'var(--cat-bebidas-bg)' },
+  { key: 'mercearia', name: 'Mercearia', emoji: '🛒', color: 'var(--cat-mercearia)', bgColor: 'var(--cat-mercearia-bg)' },
+  { key: 'casa', name: 'Casa & Higiene', emoji: '🧻', color: 'var(--cat-casa)', bgColor: 'var(--cat-casa-bg)' },
+  { key: 'outros', name: 'Outros', emoji: '🎈', color: 'var(--cat-outros)', bgColor: 'var(--cat-outros-bg)' },
 ];
 
 export function getCategoryByKey(key: string): Category | undefined {
