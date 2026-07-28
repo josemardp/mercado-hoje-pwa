@@ -131,9 +131,12 @@ export async function initializeDefaultItems(userId: string) {
     // Seed local IndexedDB
     await db.items.bulkAdd(localDefaults);
 
-    // Seed Supabase if online
+    // Seed Supabase if online. If this fails, the local catalog is no
+    // longer empty, so this function won't run again — queue each default
+    // so the normal sync queue (which does check errors) retries them,
+    // instead of silently never pushing the seed to the remote catalog.
     try {
-      await supabase
+      const { error } = await supabase
         .from('mh_items')
         .upsert(
           localDefaults.map(item => ({
@@ -148,8 +151,22 @@ export async function initializeDefaultItems(userId: string) {
           })),
           { onConflict: 'id' }
         );
+      if (error) throw new Error(error.message);
     } catch {
-      // Ignored: sync queue will catch up later or next catalog sync
+      const now = Date.now();
+      await db.syncQueue.bulkAdd(localDefaults.map(item => ({
+        type: 'add' as const,
+        dayKey: '',
+        itemId: item.id,
+        itemName: item.name,
+        category: item.category,
+        qty: item.qty,
+        emoji: item.emoji,
+        useCount: item.useCount,
+        lastUsed: item.lastUsed || now,
+        timestamp: now,
+        attemptCount: 0,
+      })));
     }
   }
 }
@@ -294,7 +311,7 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
  * catalog name collision with another device. Dexie primary keys are
  * immutable, so this is a delete+recreate under the new id, not an update.
  */
-async function remapItemId(oldId: string, newId: string): Promise<void> {
+export async function remapItemId(oldId: string, newId: string): Promise<void> {
   const localItem = await db.items.get(oldId);
   if (localItem) {
     await db.items.delete(oldId);
