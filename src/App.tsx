@@ -392,8 +392,8 @@ export default function App() {
       <div className="page">
         <div className="login-wrap">
           <div className="login-card">
-            <h1 className="login-title">Mercado</h1>
-            <p className="login-desc">Lista de compras inteligente.<br />Insira seu e-mail para receber um link de acesso instantâneo.</p>
+            <h1 className="login-title">Meu Diário</h1>
+            <p className="login-desc">Compras, rotina e agenda no seu dia a dia.<br />Insira seu e-mail para receber um link de acesso instantâneo.</p>
             {authSent ? (
               <div className="login-success">
                 ✉️ Enviamos um Magic Link para seu e-mail! Verifique sua caixa de entrada e clique no link para entrar.
@@ -425,10 +425,10 @@ export default function App() {
       {activeTab !== 'rotina' && (
       <header>
         <div className="header-top">
-          <div className="basket">🧺</div>
+          <div className="basket">📔</div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <h1>Mercado</h1>
+              <h1>Meu Diário</h1>
               {syncStatus !== 'idle' && (
                 <span className="sync-indicator">
                   {syncStatus === 'syncing' && '🔄 salvando...'}
@@ -462,7 +462,7 @@ export default function App() {
                 className="install-btn"
                 onClick={() => installApp()}
                 aria-label="Instalar app"
-                title="Instalar Mercado de Hoje"
+                title="Instalar Meu Diário"
               >
                 📲
               </button>
