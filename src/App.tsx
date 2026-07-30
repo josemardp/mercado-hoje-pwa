@@ -506,8 +506,8 @@ export default function App() {
       )}
 
       {/* ─── TABS ─── */}
-      <div className="tabs-bar">
-        {TABS.map(tab => {
+      {(() => {
+        const renderTab = (tab: (typeof TABS)[number]) => {
           const count =
             tab.key === 'hoje'
               ? todayItems.length - checkedCount
@@ -527,8 +527,16 @@ export default function App() {
               {count > 0 && <span className="tab-badge">{count}</span>}
             </button>
           );
-        })}
-      </div>
+        };
+        const rotinaTab = TABS.find(t => t.key === 'rotina')!;
+        const comprasTabs = TABS.filter(t => t.key !== 'rotina');
+        return (
+          <div className="tabs-bar tabs-bar-pyramid">
+            <div className="tabs-row tabs-row-top">{renderTab(rotinaTab)}</div>
+            <div className="tabs-row tabs-row-bottom">{comprasTabs.map(renderTab)}</div>
+          </div>
+        );
+      })()}
 
       <main className={activeTab === 'rotina' ? 'main-rotina' : undefined}>
         {activeTab === 'rotina' ? (
