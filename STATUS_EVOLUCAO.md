@@ -92,7 +92,7 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Sprints concluídas | 3 de 7 (Sprint 0, Sprint 1, Sprint 2) |
 | Achados resolvidos | 7 de 26 (AUD-008, AUD-015, AUD-016, AUD-001, AUD-003, AUD-004, AUD-009). AUD-005 e AUD-006 parcialmente mitigados (D-009 e S2-09) — não contados como resolvidos. AUD-002 continua com teste de regressão vermelho (correção é escopo da Sprint 3) |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `470be73` (run `30539728743`, aprovado) — Sprint 2 ainda não teve seu próprio run confirmado nesta atualização |
+| Último deploy estável conhecido | commit `d7ae52e` (run `30544713438`, aprovado — inclui validação das migrations `20260801`/`20260802` do zero) |
 | Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (44 passaram, 1 vermelho esperado, 1 pendente); build aprovado; `pnpm audit --prod` sem vulnerabilidades; migrations `20260801`/`20260802` aplicadas e verificadas em produção; login verificado ao vivo no navegador após a refatoração do `AuthProvider` |
 
 ### Resumo por prioridade
