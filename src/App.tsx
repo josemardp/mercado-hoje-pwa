@@ -87,7 +87,9 @@ const ItemRow = memo(function ItemRow({
 export default function App() {
   const {
     user,
-    loginWithMagicLink,
+    signInWithPassword,
+    sendPasswordReset,
+    updatePassword,
     logout,
     state,
     loading: stateLoading,
@@ -123,8 +125,16 @@ export default function App() {
   } = useRegisterSW();
 
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [authSent, setAuthSent] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [changePasswordStatus, setChangePasswordStatus] = useState<'idle' | 'saving' | 'error'>('idle');
 
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<ItemRecord[]>([]);
@@ -200,19 +210,54 @@ export default function App() {
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    setAuthError('');
+
+    if (forgotMode) {
+      if (!email.trim()) return;
+      try {
+        setAuthLoading(true);
+        await sendPasswordReset(email.trim());
+        setResetSent(true);
+      } catch (err) {
+        console.error(err);
+        setAuthError('Não deu pra enviar o link de redefinição. Confira o e-mail.');
+      } finally {
+        setAuthLoading(false);
+      }
+      return;
+    }
+
+    if (!email.trim() || !password) return;
     try {
       setAuthLoading(true);
-      await loginWithMagicLink(email.trim());
-      setAuthSent(true);
-      showToast('✉️ Magic Link enviado!');
+      await signInWithPassword(email.trim(), password);
     } catch (err) {
       console.error(err);
-      showToast('❌ Erro ao enviar Magic Link.');
+      setAuthError('E-mail ou senha incorretos.');
     } finally {
       setAuthLoading(false);
     }
   };
+
+  const handleChangePasswordSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6 || newPassword !== newPasswordConfirm) {
+      setChangePasswordStatus('error');
+      return;
+    }
+    try {
+      setChangePasswordStatus('saving');
+      await updatePassword(newPassword);
+      setShowChangePassword(false);
+      setNewPassword('');
+      setNewPasswordConfirm('');
+      setChangePasswordStatus('idle');
+      showToast('🔒 Senha atualizada!');
+    } catch (err) {
+      console.error(err);
+      setChangePasswordStatus('error');
+    }
+  }, [newPassword, newPasswordConfirm, updatePassword, showToast]);
 
   const handleCategoryCorrection = useCallback(async (newCategory: string) => {
     if (correctionItemId == null) return;
@@ -393,10 +438,10 @@ export default function App() {
         <div className="login-wrap">
           <div className="login-card">
             <h1 className="login-title">Meu Diário</h1>
-            <p className="login-desc">Compras, rotina e agenda no seu dia a dia.<br />Insira seu e-mail para receber um link de acesso instantâneo.</p>
-            {authSent ? (
+            <p className="login-desc">Compras, rotina e agenda no seu dia a dia.</p>
+            {resetSent ? (
               <div className="login-success">
-                ✉️ Enviamos um Magic Link para seu e-mail! Verifique sua caixa de entrada e clique no link para entrar.
+                ✉️ Enviamos um link de redefinição de senha pro seu e-mail! Verifique sua caixa de entrada.
               </div>
             ) : (
               <form onSubmit={handleLoginSubmit} className="login-form">
@@ -408,8 +453,28 @@ export default function App() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+                {!forgotMode && (
+                  <input
+                    type="password"
+                    placeholder="Sua senha..."
+                    className="login-input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                )}
+                {authError && <div className="login-error">{authError}</div>}
                 <button type="submit" className="login-submit-btn" disabled={authLoading}>
-                  {authLoading ? 'Enviando...' : 'Receber Link de Acesso'}
+                  {authLoading
+                    ? (forgotMode ? 'Enviando...' : 'Entrando...')
+                    : (forgotMode ? 'Enviar link de redefinição' : 'Entrar')}
+                </button>
+                <button
+                  type="button"
+                  className="login-forgot-link"
+                  onClick={() => { setForgotMode(f => !f); setAuthError(''); }}
+                >
+                  {forgotMode ? '← Voltar pro login' : 'Esqueci minha senha'}
                 </button>
               </form>
             )}
@@ -791,7 +856,54 @@ export default function App() {
             </button>
           )}
         </div>
+        <button
+          className="login-forgot-link"
+          onClick={() => setShowChangePassword(true)}
+        >
+          Alterar senha
+        </button>
       </footer>
+
+      {/* Change password modal */}
+      {showChangePassword && (
+        <div className="modal-backdrop" onClick={() => setShowChangePassword(false)}>
+          <div className="ios-modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="ios-modal-title">Alterar senha</h2>
+            <form onSubmit={handleChangePasswordSubmit} className="login-form">
+              <input
+                type="password"
+                placeholder="Nova senha (mín. 6 caracteres)..."
+                className="login-input"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); setChangePasswordStatus('idle'); }}
+                required
+                minLength={6}
+              />
+              <input
+                type="password"
+                placeholder="Confirme a nova senha..."
+                className="login-input"
+                value={newPasswordConfirm}
+                onChange={(e) => { setNewPasswordConfirm(e.target.value); setChangePasswordStatus('idle'); }}
+                required
+                minLength={6}
+              />
+              {changePasswordStatus === 'error' && (
+                <div className="login-error">
+                  {newPassword.length < 6
+                    ? 'A senha precisa ter pelo menos 6 caracteres.'
+                    : newPassword !== newPasswordConfirm
+                    ? 'As senhas não coincidem.'
+                    : 'Não deu pra salvar a senha. Tenta de novo.'}
+                </div>
+              )}
+              <button type="submit" className="login-submit-btn" disabled={changePasswordStatus === 'saving'}>
+                {changePasswordStatus === 'saving' ? 'Salvando...' : 'Salvar senha'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* iOS Installation Modal */}
       {showIosInstallModal && (
