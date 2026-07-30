@@ -782,6 +782,26 @@ footer {
   font-weight: 700;
   line-height: 1.5;
 }
+.login-error {
+  background: var(--pink-bg);
+  color: var(--pink);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.login-forgot-link {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+  align-self: center;
+}
 
 /* ─── IOS INSTALL MODAL ─── */
 .modal-backdrop {

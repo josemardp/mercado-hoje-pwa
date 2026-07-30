@@ -65,13 +65,24 @@ export function useDayState() {
     return () => clearInterval(interval);
   }, [todayKey]);
 
-  const loginWithMagicLink = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin + '/mercado-hoje-pwa/',
-      },
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }, []);
+
+  // One-time recovery path only (forgot password) — not the everyday login,
+  // which now goes through signInWithPassword above.
+  const sendPasswordReset = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/mercado-hoje-pwa/',
     });
+    if (error) throw error;
+  }, []);
+
+  // Requires an already-active session (used both right after a password
+  // reset redirect and from the logged-in "Alterar senha" action).
+  const updatePassword = useCallback(async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
   }, []);
 
@@ -613,7 +624,9 @@ export function useDayState() {
 
   return {
     user,
-    loginWithMagicLink,
+    signInWithPassword,
+    sendPasswordReset,
+    updatePassword,
     logout,
     state,
     loading,
