@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 30/07/2026 (sessão de execução da Sprint 5 — encerramento)
+**Última atualização:** 30/07/2026 (sessão de execução da Sprint 6 — encerramento; todas as 7 sprints do plano concluídas)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -83,17 +83,17 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 5 CONCLUÍDA` |
-| Fase atual | Tabs/Combobox/Dialog acessíveis, live regions de sync/erro, alvos de toque e tabela da Agenda com wrapper de scroll, banner de update do PWA visível em qualquer aba, sem overflow horizontal em nenhum viewport testado, navegação completa por teclado verificada ao vivo |
-| Sprint ativa | Sprint 6 — Performance, segurança e consolidação |
-| Foco atual | Iniciar Sprint 6: lazy-load de Rotina/Agenda e análise de bundle (S6-01/S6-02) |
-| Próxima entrega | Sprint 6 — performance, segurança e consolidação (AUD-019, AUD-020, AUD-023, AUD-024, AUD-025) |
-| Progresso do plano | ~78% (45/58 itens — Sprints 0-5 completas; Sprint 4 fechada em escopo reduzido) |
-| Sprints concluídas | 6 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5) |
-| Achados resolvidos | 18 de 26 (AUD-014, AUD-017, AUD-018 nesta atualização, mais os 15 anteriores). AUD-005/AUD-006 parcialmente mitigados; AUD-011 parcialmente resolvido (3 de 4 problemas, o 4º desescopado) — nenhum dos três contado como resolvido |
+| Situação geral | `EM EXECUÇÃO — SPRINT 6 CONCLUÍDA (escopo reduzido) — todas as 7 sprints do plano encerradas` |
+| Fase atual | Lazy-load da Rotina/Agenda, Tailwind removido (não usado), CSP via meta tag testada sem violações, logger sanitizado + observabilidade, exportação de dados, README reescrito. Divisão de arquivos grandes (S6-10) desescopada por decisão (D-022) |
+| Sprint ativa | Nenhuma — plano de 7 sprints encerrado. Resta fechar os achados residuais (AUD-005/006/011/024, parciais) antes de declarar "evolução concluída" pelo critério da seção 15 |
+| Foco atual | Decidir com o proprietário: aceitar os residuais parciais como risco permanente (fechando por decisão, como já feito com D-009/D-011/D-014/D-017) ou agendar uma sessão dedicada pra cada um |
+| Próxima entrega | Nenhuma sprint nova prevista — plano `PLANO_EVOLUCAO_IMPLEMENTACAO.md` cumprido; próximos passos são os residuais acima ou o backlog de evolução (seção 5 do plano) |
+| Progresso do plano | ~93% (54/58 itens — todas as 7 sprints completas; Sprint 4 e Sprint 6 fechadas em escopo reduzido por decisão) |
+| Sprints concluídas | 7 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5, Sprint 6) |
+| Achados resolvidos | 22 de 26 (AUD-019, AUD-020, AUD-023, AUD-025 nesta atualização, mais os 18 anteriores). Residuais parciais: AUD-005/AUD-006 (mitigados, não fechados), AUD-011 (3 de 4 problemas, o 4º desescopado), AUD-024 (documentação concluída, divisão de arquivos desescopada) |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
 | Último deploy estável conhecido | commit `4d9248c` (run `30562831582`, aprovado) |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; principais mudanças de UI verificadas ao vivo na conta real do proprietário (ver seção 9) |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; CSP testada ao vivo contra o build de produção sem violações; principais mudanças verificadas ao vivo na conta real do proprietário (ver seção 9) |
 
 ### Resumo por prioridade
 
@@ -102,9 +102,9 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Crítico | 2 | 2 | 0 |
 | Alto | 7 | 5 | 2 |
 | Médio/Alto | 1 | 1 | 0 |
-| Médio | 11 | 8 | 3 |
-| Baixo | 5 | 2 | 3 |
-| **Total** | **26** | **18** | **8** |
+| Médio | 11 | 10 | 1 |
+| Baixo | 5 | 4 | 1 |
+| **Total** | **26** | **22** | **4** |
 
 ### Critérios de cálculo
 
@@ -248,23 +248,23 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 
 ### Sprint 6 — Performance, segurança e consolidação
 
-**Estado:** `NÃO INICIADO`
-**Progresso:** 0/10 — 0%
+**Estado:** `CONCLUÍDA` (escopo reduzido — ver D-023)
+**Progresso:** 9/10 — 90%
 **Dependência:** gate da Sprint 5.
 **Gate de saída:** metas de qualidade atingidas, operação documentada e dívida principal encerrada.
 
 | ID | Entrega | Estado | Evidência/observação |
 |---|---|---|---|
-| S6-01 | Lazy-load de Rotina e Agenda | `NÃO INICIADO` | — |
-| S6-02 | Analisar e reduzir bundle | `NÃO INICIADO` | — |
-| S6-03 | Otimizar fontes e metadados | `NÃO INICIADO` | — |
-| S6-04 | Logger por ambiente com redaction | `NÃO INICIADO` | — |
-| S6-05 | Observabilidade sem dados pessoais | `NÃO INICIADO` | — |
-| S6-06 | Aplicar headers defensivos | `NÃO INICIADO` | — |
-| S6-07 | Decidir evolução da hospedagem | `NÃO INICIADO` | — |
-| S6-08 | Implementar retenção e backup/exportação | `NÃO INICIADO` | — |
-| S6-09 | Atualizar documentação e runbooks | `NÃO INICIADO` | — |
-| S6-10 | Refatorar arquivos grandes por domínio | `NÃO INICIADO` | — |
+| S6-01 | Lazy-load de Rotina e Agenda | `CONCLUÍDO` | `RotinaTab` (que já importa `AgendaPlanner` e `rotinaStyles.css`) virou `React.lazy` em `App.tsx`, com `Suspense fallback={null}`. Bundle inicial caiu de 494,88KB pra 479,30KB (gzip 138,65→134,37KB); `RotinaTab`/CSS viraram um chunk próprio de 15,89KB JS + 8,55KB CSS, só carregado quando a aba Rotina abre. Os hooks de dados (`useRotinaState`/`useAgendaState`) continuam eager — os badges de contagem nas abas precisam do dado antes de a aba ser aberta. |
+| S6-02 | Analisar e reduzir bundle | `CONCLUÍDO` | Dependências já eram enxutas (`@supabase/supabase-js`, `dexie`, `react`, `react-dom`, `workbox-window` — nenhuma sobrando). Achado real: Tailwind CSS 4 (`@tailwindcss/vite` + `@import "tailwindcss"`) estava instalado e processando o build inteiro sem NENHUMA classe utilitária usada em nenhum `.tsx` do projeto (confirmado por busca) — só gerava ~11KB de preflight/reset morto no CSS final. Removido por completo (pacotes, plugin do Vite, import); CSS principal caiu de 29,00KB pra 18,39KB (gzip 6,41→4,20KB). Verificado visualmente antes/depois (nenhuma diferença, porque a reset própria de `index.css` — `* { box-sizing: border-box }` — já cobria o que o Tailwind preflight faria). |
+| S6-03 | Otimizar fontes e metadados | `CONCLUÍDO` | Adicionados `<meta name="description">`, Open Graph (`og:title`/`og:description`/`og:image`) e Twitter Card em `index.html` (AUD-023). Achado à parte: `rotinaStyles.css` referenciava `'Inter'` como fonte primária da aba Rotina, mas Inter nunca foi carregada (não está no link do Google Fonts) — o navegador sempre caiu silenciosamente pra `'Nunito Sans'` (que É carregada); removida a referência morta. Decisão de NÃO migrar as fontes pra self-host: já usam `display=swap`, `preconnect` e ficam em cache offline via Workbox (`CacheFirst`, 1 ano) — o ganho de latência do self-host seria só no primeiro acesso de cada aparelho, não justifica manter arquivos de fonte binários no repo pra um app pessoal (ver D-020). |
+| S6-04 | Logger por ambiente com redaction | `CONCLUÍDO` | Novo `src/lib/logger.ts`: em dev, erro completo vai pro console (debug local); em produção (`import.meta.env.DEV` false), `logSyncFailure` redige a entrada da fila por allowlist (só id/type/dayKey/itemId/stepId/taskId/timestamp/attemptCount/userId — nunca `itemName`/categoria/título) e `logError` loga só `err.message`. Achado real corrigido: `console.error('Failed to process sync queue entry:', entry, err)` em `db.ts` despejava a entrada INTEIRA da fila de Compras — incluindo `itemName` (o nome do item, dado pessoal) — no console de produção (`drop_console: false` no Vite garante que sobrevive ao build). Todos os 8 `console.error` do código de produção substituídos pelos helpers do logger. |
+| S6-05 | Observabilidade sem dados pessoais | `CONCLUÍDO` | `logQueueHealth` (tamanho da fila pendente + idade da entrada mais antiga, por domínio) chamado nos três hooks (`useStore`/`useRotinaState`/`useAgendaState`) sempre que há algo pendente pra sincronizar; `logReconciliation` chamado nos dois pontos de reconciliação (`rotinaDb.ts`/`agendaDb.ts`) com `stepId`/`taskId` (ids, não conteúdo). `onRegisteredSW`/`onNeedRefresh`/`onRegisterError` do `useRegisterSW` agora logam o ciclo de vida do service worker (registrado/nova versão esperando/erro de registro) — nenhum desses eventos carrega dado do usuário. |
+| S6-06 | Aplicar headers defensivos | `CONCLUÍDO` (escopo reduzido — ver D-021) | CSP aplicada via `<meta http-equiv="Content-Security-Policy">` em `index.html` (`default-src 'self'`; `style-src` com `'unsafe-inline'` porque o app usa `style={{}}` inline extensivamente — 21 ocorrências — e não há como evitar isso sem reescrever toda a UI; `connect-src` liberado pra `*.supabase.co`/`wss://*.supabase.co`). Testado ao vivo contra o build de produção (`pnpm preview`) navegando por login, as 3 abas de Compras, Rotina e Agenda — zero violações de CSP no console. `nosniff`/`X-Frame-Options`/`Permissions-Policy` reais (headers HTTP) e `frame-ancestors` (que a spec de CSP ignora quando entregue via `<meta>`) ficam de fora — GitHub Pages não serve headers customizados; ver S6-07/D-021. |
+| S6-07 | Decidir evolução da hospedagem | `CONCLUÍDO` | Avaliado migrar pra um host com suporte a headers customizados (Cloudflare Pages, Netlify, Vercel) — decisão registrada de NÃO migrar nesta sprint (D-021): o ganho real (headers de framing/nosniff que a `<meta>` não cobre) é modesto pra um app pessoal sem conteúdo de terceiros embutido, contra o risco de mexer no pipeline de deploy de um app usado diariamente em produção. Documentado no README como limitação conhecida e aceita, não esquecida. |
+| S6-08 | Implementar retenção e backup/exportação | `CONCLUÍDO` | Novo `src/lib/exportData.ts` + botão "Exportar meus dados" no rodapé de `App.tsx`: busca direto do Supabase (não do Dexie, que só guarda o dia corrente) as 4 tabelas do usuário (`mh_items`, `mh_day_items`, `mh_rotina_state`, `mh_agenda_tasks`) e baixa um `.json` local via `Blob`+`<a download>`. Testado ao vivo na conta real: baixou `meu-diario-backup-2026-07-30.json` com 24 itens, 8 dayItems, 13 estados de rotina, 14 tarefas de agenda — contagens conferem com os dados reais da conta. Retenção de `mh_reset_cutoffs` já tinha decisão própria (D-010, Sprint 1: reter indefinidamente); `mh_processed_operations` (idempotência de `use_count`) cresce sem rotina de limpeza — registrado como risco residual menor (R-007), não crítico pro uso pessoal atual. |
+| S6-09 | Atualizar documentação e runbooks | `CONCLUÍDO` | `README.md` reescrito por completo: nome atual (Meu Diário), os três módulos, autenticação por e-mail/senha (o README antigo ainda descrevia Magic Link, desatualizado), estrutura completa do banco (6 tabelas + 9 RPCs, incluindo as adicionadas nas Sprints 1/2/3 que nunca tinham sido documentadas), sincronização/conflitos, exportação de dados, segurança (incluindo a limitação de headers do GitHub Pages) e um runbook de rollback (front-end via `git revert`+push ou re-run de uma Actions run anterior; banco via SQL inverso manual testado local antes de aplicar — o projeto nunca versionou migrations "down"). |
+| S6-10 | Refatorar arquivos grandes por domínio | `CANCELADO` (D-022) | `App.tsx` (1186 linhas), `useStore.ts` (1021) e `db.ts` (815) permanecem como estão. Decisão de não fatiar nesta sessão: é o item de maior risco de regressão da sprint (mover estado/efeitos entre arquivos num app usado diariamente em produção, sem o proprietário revisando cada extração), e nenhum critério de aceite da sprint depende disso — é dívida técnica registrada, não um bug. Fica como item isolado pra uma sessão dedicada, com testes mais próximos de cada extração. |
 
 ## 7. Cobertura dos achados da auditoria
 
@@ -288,13 +288,13 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | AUD-016 — CI incompleto | Médio | 0 | `CONCLUÍDO` | `.github/workflows/deploy.yml` agora roda lint, typecheck, test, `pnpm audit --prod`, build e validação de migrations antes do deploy; `packageManager` fixado. Primeiro run real (`30539728743`) aprovado de ponta a ponta. |
 | AUD-017 — acessibilidade interna | Médio | 5 | `CONCLUÍDO` | Tabs/Combobox/Dialog com ARIA completo e navegação por teclado (setas/Home/End/Escape/Tab-trap); live regions em sync/erro/validação. Verificado ao vivo, incluindo tema escuro. Auditoria automatizada (axe/Lighthouse) não executada nesta sessão — ver D-018. |
 | AUD-018 — controles/layout Agenda | Médio | 5 | `CONCLUÍDO` | Alvos de toque aumentados (remover/badge/checkbox mais próximos de 44×44px; botões de reordenar continuam menores por restrição de espaço — ver S5-04); tabela ganhou wrapper com scroll horizontal próprio em vez de comprimir colunas. Sem overflow horizontal em 320/360/390/768/1280px nem em zoom 200% simulado. |
-| AUD-019 — dados pessoais em logs | Médio | 6 | `NÃO INICIADO` | — |
-| AUD-020 — headers ausentes | Médio | 6 | `NÃO INICIADO` | — |
+| AUD-019 — dados pessoais em logs | Médio | 6 | `CONCLUÍDO` | `src/lib/logger.ts` redige qualquer payload de erro/fila de sync antes do console em produção. Achado real corrigido: `db.ts` despejava a entrada INTEIRA da fila de Compras (incluindo `itemName`) no console de produção a cada falha de sync. |
+| AUD-020 — headers ausentes | Médio | 6 | `CONCLUÍDO` | CSP aplicada via `<meta http-equiv>` (testada ao vivo contra o build de produção, zero violações). `frame-ancestors`/`nosniff`/`X-Frame-Options`/`Permissions-Policy` reais ficam fora por serem header-only e GitHub Pages não servir headers customizados — avaliado migrar de hospedagem (S6-07) e decidido manter por ora (D-021); limitação documentada no README, não escondida. |
 | AUD-021 — estado vazio enganoso | Baixo | 4 | `CONCLUÍDO` | "Tudo no carrinho! Boas compras!" só aparece quando havia itens e todos foram concluídos (`totalCount > 0`); lista genuinamente vazia agora mostra "Sua lista está vazia" em vez de comemorar algo que nunca existiu. |
 | AUD-022 — Markdown literal no iOS | Baixo | 4 | `CONCLUÍDO` | `**Compartilhar**`/`**Adicionar à Tela de Início**`/`**Adicionar**` trocados por `<strong>` no modal de instalação iOS. |
-| AUD-023 — SEO/performance inicial | Baixo | 6 | `NÃO INICIADO` | — |
-| AUD-024 — documentação/estrutura | Baixo | 6 | `NÃO INICIADO` | — |
-| AUD-025 — retenção indefinida | Baixo | 6 | `NÃO INICIADO` | — |
+| AUD-023 — SEO/performance inicial | Baixo | 6 | `CONCLUÍDO` | Meta description + Open Graph/Twitter Card em `index.html`; bundle inicial reduzido (lazy-load da Rotina/Agenda, remoção do Tailwind não usado). |
+| AUD-024 — documentação/estrutura | Baixo | 6 | `EM IMPLEMENTAÇÃO` | README reescrito por completo (nome atual, 3 módulos, banco, sync, exportação, runbook de rollback) — a metade "documentação" do achado está resolvida. A metade "estrutura" (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio) foi cancelada nesta sessão por decisão (D-022, S6-10) — risco de regressão maior que o benefício numa sessão sem o proprietário revisando cada extração. Achado não fechado enquanto a divisão não acontecer. |
+| AUD-025 — retenção indefinida | Baixo | 6 | `CONCLUÍDO` | Botão "Exportar meus dados" (`src/lib/exportData.ts`) dá portabilidade total dos dados a qualquer momento, testado ao vivo na conta real. Retenção de `mh_reset_cutoffs` já tinha decisão própria (D-010). `mh_processed_operations` cresce sem rotina de limpeza — registrado como risco residual menor (R-007), não bloqueia o achado porque o volume real (uso pessoal) é desprezível. |
 | AUD-026 — recuperação de senha incompleta | Médio | 4 | `CONCLUÍDO` | `PASSWORD_RECOVERY` abre o formulário automaticamente; campos com autocomplete correto (já concluído antes). Agora também: link expirado/já usado mostra mensagem clara na tela de login (`authLinkError` no `AuthProvider`, parseado do hash de erro do Supabase, testado ao vivo com `error_code=otp_expired`); sinal `passwordRecovery` é limpo (`clearPasswordRecovery`) assim que a senha é salva com sucesso. |
 
 ## 8. Gates de qualidade e release
@@ -307,8 +307,8 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | G3 — Agenda correta | `APROVADO` | Sprint 3 concluída | Sprint 3 concluída nesta atualização; AUD-002 (crítico) e AUD-012 resolvidos; 1000 combinações aleatórias sem sobreposição. |
 | G4 — UX segura | `APROVADO` | Sprint 4 concluída | Sprint 4 encerrada com escopo reduzido (D-017): os 5 critérios de aceite da sprint foram todos conferidos; S4-01/S4-03/parte do S4-05 desescopados por decisão registrada, não por gate não atendido. |
 | G5 — interface acessível/PWA | `APROVADO` | Sprint 5 concluída | Sprint 5 concluída nesta atualização; fluxos principais navegáveis só por teclado (verificado ao vivo), sem overflow horizontal em nenhum viewport/zoom testado, update do PWA visível em qualquer aba. S5-08 fechado em escopo reduzido (D-018, sem axe/Lighthouse automatizado). |
-| G6 — consolidação | `PENDENTE` | Sprint 6 e metas finais concluídas | — |
-| Produção final | `PENDENTE` | G1 a G6 aprovados e smoke test | — |
+| G6 — consolidação | `APROVADO` | Sprint 6 e metas finais concluídas | Sprint 6 concluída nesta atualização com escopo reduzido (D-023): 9/10 itens concluídos, S6-10 (divisão de arquivos grandes) cancelado por decisão (D-022) sem afetar nenhum critério de aceite da sprint. |
+| Produção final | `PENDENTE` | G1 a G6 aprovados e smoke test | G1-G6 todos aprovados. Falta: decidir o destino dos achados residuais parciais (AUD-005/006/011/024, ver seção 15) antes de declarar "evolução concluída" pelo critério da seção 15 — nenhum deles é um gate bloqueado, são risco residual já mitigado e registrado. |
 
 ## 9. Testes da última atualização
 
@@ -347,6 +347,10 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | 30/07/2026 | Sprint 5 | `npx tsc -b` / `pnpm lint` / `pnpm test` (Vitest) / `pnpm build` | Aprovado; 50 testes aprovados, 0 vermelhos, 0 pendentes |
 | 30/07/2026 | Sprint 5 | Verificado ao vivo na conta real do proprietário (`pnpm dev` + Playwright, login com credenciais fornecidas pontualmente, não persistidas): navegação por seta/Home/End nas duas tablists (nav principal e Rotina fixa/Agenda); combobox de itens responde a ArrowDown/Escape com `aria-activedescendant` correto; modal de trocar senha faz trap de Tab nas duas pontas, Escape fecha e devolve foco ao botão que abriu; tabela da Agenda rola horizontalmente sem estourar a página | Todas as verificações passaram |
 | 30/07/2026 | Sprint 5 | Testado em 320/360/390/768/1280px, zoom 200% simulado (640×400) e paisagem (844×390), tema claro e escuro (`page.emulateMedia`) | Sem overflow horizontal (`scrollWidth > clientWidth` falso) em nenhum caso, nos dois temas — um bug real de overflow foi encontrado e corrigido durante esse teste (ver D-019) |
+| 30/07/2026 | Sprint 6 | `npx tsc -b` / `pnpm lint` / `pnpm test` (Vitest) / `pnpm build` — repetido a cada mudança relevante (lazy-load, remoção do Tailwind, logger, CSP, exportação) | Aprovado em todas as passagens; 50 testes aprovados, 0 vermelhos, 0 pendentes |
+| 30/07/2026 | Sprint 6 | `pnpm build` antes/depois de remover o Tailwind CSS 4 não usado | CSS principal: 29,00KB→18,39KB (gzip 6,41→4,20KB). Bundle inicial (após lazy-load da Rotina/Agenda): 494,88KB→479,30KB (gzip 138,65→134,37KB); `RotinaTab` virou chunk próprio de 15,89KB JS + 8,55KB CSS |
+| 30/07/2026 | Sprint 6 | `pnpm preview` (build de produção) + Playwright, login na conta real, navegação por login/Compras/Rotina/Agenda, com a CSP nova aplicada | Zero violações de CSP no console em nenhum ponto testado |
+| 30/07/2026 | Sprint 6 | Clique real em "Exportar meus dados" na conta real (`pnpm dev` + Playwright) | Baixou `meu-diario-backup-2026-07-30.json` com contagens reais (24 items, 8 dayItems, 13 rotinaState, 14 agendaTasks) — arquivo inspecionado só pelas contagens/chaves, não pelo conteúdo pessoal |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -369,7 +373,8 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | R-003 | Cliente antigo não entender tombstone/versão nova | Média | Alto | Schema retrocompatível e rollout em duas fases | Aberto |
 | R-004 | Testes offline não representarem dois aparelhos | Média | Alto | E2E com dois contextos e relógios controlados | Aberto |
 | R-005 | Escopo crescer antes de corrigir integridade | Alta | Alto | Respeitar gates e caminho crítico | Aberto |
-| R-006 | Logs/telemetria capturarem dados pessoais | Média | Alto | Redaction, allowlist de campos e revisão | Aberto |
+| R-006 | Logs/telemetria capturarem dados pessoais | Média | Alto | Redaction, allowlist de campos e revisão | Mitigado — `src/lib/logger.ts` redige por allowlist antes de qualquer console.error de produção (Sprint 6, AUD-019) |
+| R-007 | `mh_processed_operations` (idempotência de `use_count`) cresce sem rotina de limpeza | Baixa | Baixo | Reavaliar se o volume real crescer — uso pessoal em poucos aparelhos mantém a tabela pequena por ora | Aberto (aceito como residual menor, Sprint 6) |
 
 ## 12. Decisões
 
@@ -396,6 +401,11 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-018 | 30/07/2026 | Encerrar S5-08 sem rodar axe-core/Lighthouse, cobrindo o item só com teste manual de teclado ao vivo | O ambiente desta sessão não tem essas ferramentas de auditoria automatizada disponíveis; adiar a sprint inteira por isso não se justifica quando o teste manual já cobre navegação por teclado (o critério mais concreto do plano) em tabs, combobox e modal | Sprint 5 fechada como concluída; auditoria automatizada fica como pendência registrada, não esquecida — retomar se/quando essas ferramentas estiverem disponíveis | STATUS_EVOLUCAO.md, seção da Sprint 5 desta atualização |
 | D-019 | 30/07/2026 | Durante o teste de viewport da Sprint 5, encontrado que a navegação principal (`.tabs-row-bottom .tab-btn`) já estourava horizontalmente em qualquer largura — não é um problema introduzido pela Agenda, é estrutural: `#root` trava o app inteiro num "coluna de app" de no máximo 460px mesmo em telas largas, então os 3 botões de aba (com rótulos como "Compras concluídas") nunca tinham espaço de sobra, só não aparecia porque ninguém tinha medido `scrollWidth` antes | Corrigido empilhando ícone e rótulo verticalmente com quebra de linha em vez de truncar com reticências (`.tab-btn .tab-label` ganhou `white-space:normal` e o botão virou `flex-direction:column`); a regra não é uma media query de viewport (o problema não depende do viewport, já que `#root` já limita a 460px) | `src/index.css`; medido via Playwright (`scrollWidth`/`clientWidth` de cada ancestral) antes e depois da correção |
 
+| D-020 | 30/07/2026 | Não migrar as fontes do app pra self-host (S6-03) | Já usam `display=swap`, `preconnect` e ficam em cache offline via Workbox (`CacheFirst`, 1 ano de expiração) — o ganho de latência do self-host seria só no primeiro acesso de cada aparelho, não recorrente. Manter arquivos binários de fonte no repo pra esse ganho marginal não se justifica num app pessoal | Google Fonts continua sendo a fonte de `Baloo 2`/`Nunito Sans`/`Space Grotesk`/`Space Mono`; removida só a referência morta a `'Inter'` em `rotinaStyles.css` (nunca foi carregada, caía silenciosamente pra `Nunito Sans`) | `src/rotinaStyles.css`; README.md |
+| D-021 | 30/07/2026 | Não migrar de GitHub Pages pra um host com headers HTTP customizados (S6-07), aplicando CSP só via `<meta>` (S6-06) | O ganho real (headers de framing/nosniff que `<meta>` não cobre) é modesto pra um app pessoal sem conteúdo de terceiros embutido; migrar pipeline de deploy de um app usado diariamente em produção é uma mudança de infraestrutura maior que o risco atual justifica | AUD-020 considerado resolvido dentro do limite do hosting atual; limitação documentada no README e no `index.html` (comentário perto da tag CSP) — não é uma lacuna esquecida | `index.html`; `README.md` |
+| D-022 | 30/07/2026 | Cancelar S6-10 (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio) nesta sessão | É o item de maior risco de regressão da Sprint 6 — mover estado/efeitos entre arquivos grandes num app usado diariamente em produção, sem o proprietário revisando cada extração incremental. Nenhum critério de aceite da sprint depende disso | AUD-024 permanece parcialmente aberto (a metade "estrutura", não a "documentação"); fica registrado como dívida técnica pra uma sessão dedicada, com testes mais próximos de cada extração — não é esquecimento | STATUS_EVOLUCAO.md, seção da Sprint 6 desta atualização |
+| D-023 | 30/07/2026 | Encerrar a Sprint 6 com escopo reduzido: 9/10 itens concluídos, S6-10 cancelado (D-022) | Mesma lógica já aplicada em D-017 (Sprint 4): o gate de saída da sprint ("metas de qualidade atingidas, operação documentada e dívida principal encerrada") não exige file-splitting especificamente — foi cumprido pelos outros 9 itens | Gate G6 aprovado; Sprint 6 concluída; as 7 sprints do plano estão encerradas. "Evolução concluída" (critério da seção 15) ainda depende de decidir o destino de AUD-005/006/011/024 (parciais) | STATUS_EVOLUCAO.md desta atualização |
+
 ### Modelo para nova decisão
 
 ```text
@@ -406,20 +416,18 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Sprint 5 concluída e gate G5 aprovado. Iniciar a Sprint 6 (performance, segurança e consolidação): lazy-load de Rotina/Agenda e análise de bundle (S6-01/S6-02) primeiro.
+As 7 sprints do plano (`PLANO_EVOLUCAO_IMPLEMENTACAO.md`) estão encerradas — Sprint 6 concluída nesta atualização com escopo reduzido (D-023), gate G6 aprovado. Não há mais uma "próxima sprint" no caminho crítico original. O que resta antes de declarar "EVOLUÇÃO CONCLUÍDA" pelo critério da seção 15 é decidir o destino dos achados residuais parciais — nenhum é um bug ativo, todos já têm mitigação registrada, mas nenhum foi formalmente fechado por decisão.
 
 ### Sequência recomendada
 
-1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 6 antes de codar.
-2. S6-01/S6-02: lazy-load (`React.lazy`/`import()`) de `RotinaTab`/`AgendaPlanner`; medir e reduzir o bundle (`vite build` já mostra `index-*.js` de ~495KB — identificar o que pode sair do chunk inicial).
-3. S6-03: otimizar fontes (o Rotina usa Space Grotesk/Space Mono/Inter carregadas via `@font-face` ou Google Fonts — conferir) e metadados (manifest, favicon, meta tags de SEO/social).
-4. S6-04/S6-05: logger por ambiente com redaction de dados pessoais (AUD-019); observabilidade sem PII.
-5. S6-06: headers defensivos (CSP, X-Frame-Options etc.) — AUD-020, decidir onde aplicar dado que o deploy é GitHub Pages estático.
-6. S6-07: decidir se a hospedagem atual (GitHub Pages) continua adequada ou se algo muda.
-7. S6-08: retenção e exportação/backup de dados do usuário (AUD-025).
-8. S6-09/S6-10: atualizar documentação/runbooks e refatorar arquivos grandes por domínio (`App.tsx` está com mais de 1000 linhas — candidato natural).
-9. Ao final: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
-10. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
+1. Revisar com o proprietário os 4 achados ainda parciais e decidir, um a um, se cada um vira uma decisão de "aceitar residual" (fechando o achado, como já foi feito com D-009/D-011/D-014) ou uma sessão dedicada:
+   - **AUD-005** (LWW pelo relógio local): falta migrar o versionamento de escrita campo-a-campo pra timestamp do servidor. Escopo grande — provavelmente justifica uma sessão própria se for pra fechar de verdade.
+   - **AUD-006** (sem Realtime): decisão D-011 já resolveu não prototipar por falta de justificativa de custo/benefício — só falta formalizar que isso fecha o achado ou continua em aberto por tempo indefinido.
+   - **AUD-011** (4º problema: editar duração/horário depois de gerada a agenda): pequeno, poderia ser retomado numa sessão curta se o proprietário quiser.
+   - **AUD-024** (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio, S6-10 cancelado por D-022): candidato mais claro pra uma sessão dedicada, com testes por extração.
+2. Se o proprietário preferir seguir pro backlog de evolução (seção 5 do plano — histórico/revisão diária, rotinas personalizáveis, lembretes, backup/portabilidade avançado, planejado×realizado) em vez de fechar os residuais primeiro, isso é uma escolha válida — só registrar a decisão aqui antes de começar.
+3. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto, sem urgência.
+4. Qualquer trabalho novo: rodar lint/typecheck/test/build ao final, atualizar este status, commit e push na main.
 
 ### Não fazer ainda
 
@@ -427,11 +435,12 @@ Sprint 5 concluída e gate G5 aprovado. Iniciar a Sprint 6 (performance, seguran
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
 - Não revisitar a decisão de não prototipar Realtime (D-011) sem um motivo concreto novo.
 - Não retomar S4-01/S4-03 (editor dedicado, editar após gerar) sem pedido explícito do proprietário — foram desescopados por decisão (D-017), não esquecidos.
-- Não adicionar evoluções de produto do backlog.
+- Não adicionar evoluções de produto do backlog sem decidir antes o destino dos achados residuais (seção acima).
 - Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009).
 - Não pedir nem persistir credenciais reais do proprietário — se for necessário testar ao vivo, usar as credenciais uma vez e não salvá-las em nenhum arquivo/memória (D-016).
 - Não retomar S5-08 (axe/Lighthouse automatizado) sem que essas ferramentas estejam disponíveis no ambiente — desescopado por decisão (D-018), não esquecido.
-- Não iniciar mudanças de performance/bundle que quebrem o caminho de auth/sync já testado — rodar a suíte Vitest depois de qualquer lazy-load.
+- Não retomar S6-10 (dividir arquivos grandes) como parte de um trabalho maior sem isolar isso numa sessão própria com testes por extração — desescopado por decisão (D-022), não esquecido.
+- Não migrar de hospedagem (GitHub Pages) sem um motivo concreto novo além do que já foi avaliado (D-021).
 
 ## 14. Histórico de evolução
 
@@ -464,6 +473,14 @@ Sprint 5 concluída e gate G5 aprovado. Iniciar a Sprint 6 (performance, seguran
 | 30/07/2026 | Sprint 5 | Banner de update do PWA movido pra fora do header condicional, agora primeiro elemento de `.page` | AUD-014 resolvido (S5-07) | `src/App.tsx`, `src/index.css` |
 | 30/07/2026 | Sprint 5 | Testado ao vivo em 320/360/390/768/1280px, zoom 200% simulado e paisagem, temas claro/escuro — encontrado e corrigido um overflow horizontal pré-existente na navegação principal (rótulos como "Compras concluídas" nunca cabiam nos ~424px reais de `#root`, mascarado até alguém medir `scrollWidth`) | AUD-018 confirmado sem overflow em nenhum caso (S5-06); bug estrutural não relacionado à Agenda corrigido (D-019) | `src/index.css` |
 | 30/07/2026 | Sprint 5 | Sprint encerrada com escopo reduzido (D-018): S5-08 fechado só com teste manual de teclado, sem axe-core/Lighthouse (ferramentas indisponíveis nesta sessão) | Gate G5 aprovado; Sprint 5 concluída (8/8, S5-08 em escopo reduzido) | STATUS_EVOLUCAO.md desta atualização |
+| 30/07/2026 | Sprint 6 | `RotinaTab` (e `AgendaPlanner`/`rotinaStyles.css` dentro dele) virou `React.lazy`; Tailwind CSS 4 removido por completo (pacotes + plugin + import) depois de confirmar zero classes utilitárias usadas em qualquer `.tsx` do projeto — só gerava CSS morto | Bundle inicial e CSS principal reduzidos (ver seção 9 pelos números); AUD-023 avançado | `src/App.tsx`, `vite.config.ts`, `src/index.css`, `package.json` |
+| 30/07/2026 | Sprint 6 | Novo `src/lib/logger.ts`: redige por allowlist qualquer entrada de fila de sync antes de chegar ao console em produção; todos os 8 `console.error` de produção substituídos. Achado real corrigido: `db.ts` despejava `itemName` (dado pessoal) no console a cada falha de sync | AUD-019 resolvido | `src/lib/logger.ts`, `src/lib/db.ts`, `src/lib/rotinaDb.ts`, `src/lib/agendaDb.ts`, `src/App.tsx`, `src/lib/useStore.ts`, `src/lib/useRotinaState.ts`, `src/lib/useAgendaState.ts` |
+| 30/07/2026 | Sprint 6 | Observabilidade sanitizada: tamanho/idade de fila por domínio (`logQueueHealth`), eventos de reconciliação (`logReconciliation`) e ciclo de vida do service worker (`onRegisteredSW`/`onNeedRefresh`/`onRegisterError`), todos sem dado pessoal | Parte de AUD-019/observabilidade | mesmos arquivos acima; `src/App.tsx` |
+| 30/07/2026 | Sprint 6 | CSP aplicada via `<meta http-equiv>` em `index.html`; testada ao vivo contra o build de produção (`pnpm preview` + Playwright) navegando por login, Compras, Rotina e Agenda — zero violações no console | AUD-020 resolvido dentro do limite do hosting atual (D-021) | `index.html` |
+| 30/07/2026 | Sprint 6 | Meta description, Open Graph e Twitter Card adicionados a `index.html`; referência morta a `'Inter'` removida de `rotinaStyles.css` (nunca foi carregada); decisão de não migrar fontes pra self-host (D-020) | AUD-023 resolvido | `index.html`, `src/rotinaStyles.css` |
+| 30/07/2026 | Sprint 6 | Novo `src/lib/exportData.ts` + botão "Exportar meus dados" no rodapé — baixa um `.json` com todas as tabelas do usuário direto do Supabase. Testado ao vivo na conta real (contagens conferidas) | AUD-025 resolvido | `src/lib/exportData.ts`, `src/App.tsx`, `src/index.css` |
+| 30/07/2026 | Sprint 6 | `README.md` reescrito por completo: nome atual, 3 módulos, autenticação por senha (estava desatualizado, ainda descrevia Magic Link), 6 tabelas + 9 RPCs, sync/conflitos, exportação, segurança e runbook de rollback | AUD-024 parcialmente resolvido (metade "documentação"; metade "estrutura" cancelada, ver linha seguinte) | `README.md` |
+| 30/07/2026 | Sprint 6 | Sprint encerrada com escopo reduzido (D-023): S6-10 (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio) cancelado por decisão (D-022) — maior risco de regressão da sprint, nenhum critério de aceite dependia disso | Gate G6 aprovado; Sprint 6 concluída (9/10); as 7 sprints do plano estão encerradas; achados residuais parciais (AUD-005/006/011/024) registrados na seção 13 pra decisão do proprietário | STATUS_EVOLUCAO.md desta atualização |
 
 ### Modelo de atualização
 

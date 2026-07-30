@@ -9,6 +9,7 @@ import {
 } from './db';
 
 import { getTodayKey } from './categories';
+import { logError, logQueueHealth } from './logger';
 
 export interface DayStateData {
   checked: Record<string, boolean>;
@@ -121,6 +122,7 @@ export function useDayState(user: User | null) {
       const { entries, idsCoveredBy } = compactSyncQueueEntries(pending);
 
       if (entries.length > 0) {
+        logQueueHealth({ domain: 'compras', pending: entries.length, oldestTimestamp: pending[0]?.timestamp ?? null });
         setSyncStatus('syncing');
         const successIds = await processSyncQueue(user.id, entries);
 
@@ -346,7 +348,7 @@ export function useDayState(user: User | null) {
         if (cancelled) return;
         setState({ checked, postponed, inToday });
       } catch (err) {
-        console.error('Failed to load day state:', err);
+        logError('Failed to load day state', err);
       } finally {
         if (!cancelled) setLoading(false);
       }

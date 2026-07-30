@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo, lazy, Suspense } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useDayState, useItems } from './lib/useStore';
 import { AuthProvider, useAuth } from './lib/AuthProvider';
@@ -6,11 +6,19 @@ import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/c
 import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
 import { classifyItem } from './lib/classifyCategory';
-import RotinaTab from './RotinaTab';
 import { ROTINA_STEPS } from './lib/rotinaSteps';
 import { useRotinaState } from './lib/useRotinaState';
 import { useAgendaState } from './lib/useAgendaState';
 import Modal from './Modal';
+import { logError } from './lib/logger';
+import { fetchUserDataForExport, downloadJSON } from './lib/exportData';
+
+// S6-01: RotinaTab pulls in AgendaPlanner, agendaScheduler and its own CSS
+// (rotinaStyles.css) — none of that is needed until the user actually opens
+// the Rotina tab, so it's split into its own chunk instead of the initial
+// bundle. The data hooks (useRotinaState/useAgendaState above) stay eager
+// because their counts feed the tab badge before the tab is ever opened.
+const RotinaTab = lazy(() => import('./RotinaTab'));
 
 // stroke uses var(--on-accent), not a hardcoded white: in dark mode the
 // checked category color is a bright tint, and white-on-bright fails contrast.
@@ -185,7 +193,17 @@ function AppInner() {
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
-  } = useRegisterSW();
+  } = useRegisterSW({
+    onRegisteredSW(scriptUrl, registration) {
+      console.info('[sw] registered', { scriptUrl, scope: registration?.scope });
+    },
+    onNeedRefresh() {
+      console.info('[sw] new version waiting');
+    },
+    onRegisterError(err) {
+      logError('Failed to register service worker', err);
+    },
+  });
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -300,7 +318,7 @@ function AppInner() {
         await sendPasswordReset(email.trim());
         setResetSent(true);
       } catch (err) {
-        console.error(err);
+        logError('Failed to send password reset', err);
         setAuthError('Não deu pra enviar o link de redefinição. Confira o e-mail.');
       } finally {
         setAuthLoading(false);
@@ -313,7 +331,7 @@ function AppInner() {
       setAuthLoading(true);
       await signInWithPassword(email.trim(), password);
     } catch (err) {
-      console.error(err);
+      logError('Failed to sign in', err);
       setAuthError('E-mail ou senha incorretos.');
     } finally {
       setAuthLoading(false);
@@ -336,10 +354,26 @@ function AppInner() {
       clearPasswordRecovery();
       showToast('🔒 Senha atualizada!');
     } catch (err) {
-      console.error(err);
+      logError('Failed to update password', err);
       setChangePasswordStatus('error');
     }
   }, [newPassword, newPasswordConfirm, updatePassword, showToast, clearPasswordRecovery]);
+
+  const [exportingData, setExportingData] = useState(false);
+  const handleExportData = useCallback(async () => {
+    if (!user || exportingData) return;
+    setExportingData(true);
+    try {
+      const data = await fetchUserDataForExport(user.id);
+      downloadJSON(`meu-diario-backup-${getTodayKey()}.json`, data);
+      showToast('📦 Backup baixado!');
+    } catch (err) {
+      logError('Failed to export user data', err);
+      showToast('⚠️ Não deu pra exportar. Tente de novo.');
+    } finally {
+      setExportingData(false);
+    }
+  }, [user, exportingData, showToast]);
 
   const handleCategoryCorrection = useCallback(async (newCategory: string) => {
     if (correctionItemId == null) return;
@@ -440,7 +474,7 @@ function AppInner() {
         requestCategoryCorrection(newId);
       }
     } catch (err) {
-      console.error('Failed to classify item:', err);
+      logError('Failed to classify item', err);
       const newId = await addItem(name, 'outros', '📦');
       if (newId) {
         const newItemRecord: ItemRecord = {
@@ -750,7 +784,9 @@ function AppInner() {
         aria-labelledby={`tab-${activeTab}`}
       >
         {activeTab === 'rotina' ? (
-          <RotinaTab {...rotinaState} agenda={agendaState} />
+          <Suspense fallback={null}>
+            <RotinaTab {...rotinaState} agenda={agendaState} />
+          </Suspense>
         ) : (
         <>
         {/* ─── ADD INPUT ─── */}
@@ -1040,12 +1076,21 @@ function AppInner() {
             </button>
           )}
         </div>
-        <button
-          className="login-forgot-link"
-          onClick={() => setShowChangePassword(true)}
-        >
-          Alterar senha
-        </button>
+        <div className="footer-links">
+          <button
+            className="login-forgot-link"
+            onClick={handleExportData}
+            disabled={exportingData}
+          >
+            {exportingData ? 'Exportando...' : 'Exportar meus dados'}
+          </button>
+          <button
+            className="login-forgot-link"
+            onClick={() => setShowChangePassword(true)}
+          >
+            Alterar senha
+          </button>
+        </div>
       </footer>
 
       {/* Logout confirmation modal (AUD-007) */}

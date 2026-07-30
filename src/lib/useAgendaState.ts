@@ -8,6 +8,7 @@ import {
 import { getTodayKey } from './categories';
 import { estimateDurationMinutes, FLOOR_MINUTES } from './agendaDurationEstimator';
 import { generateSchedule as computeSchedule, type SchedulableTask } from './agendaScheduler';
+import { logError, logQueueHealth } from './logger';
 
 // S2-09: see useStore.ts's identical constant for the rationale.
 const FOCUS_SYNC_THROTTLE_MS = 30000;
@@ -64,6 +65,7 @@ export function useAgendaState(user: User | null) {
       const entries = allEntries.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
 
       if (entries.length > 0) {
+        logQueueHealth({ domain: 'agenda', pending: entries.length, oldestTimestamp: entries[0].timestamp });
         setSyncStatus('syncing');
         const successIds = await processAgendaSyncQueue(entries);
 
@@ -172,7 +174,7 @@ export function useAgendaState(user: User | null) {
         if (cancelled) return;
         setTasks(localItems.filter(t => !t.deleted).sort((a, b) => a.order - b.order));
       } catch (err) {
-        console.error('Failed to load agenda tasks:', err);
+        logError('Failed to load agenda tasks', err);
       } finally {
         if (!cancelled) setLoading(false);
       }

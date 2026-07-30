@@ -1,4 +1,5 @@
 import { db, supabase, type AgendaTaskRecord, type AgendaSyncQueueEntry } from './db';
+import { logSyncFailure, logReconciliation } from './logger';
 
 /**
  * Load today's Agenda tasks from Supabase for a specific user/day.
@@ -95,6 +96,7 @@ async function reconcileLocalAgendaTaskFromRemote(taskId: string, userId: string
       userId: canonical.user_id as string,
     });
     window.dispatchEvent(new CustomEvent('mh:agenda-reconciled', { detail: { taskId } }));
+    logReconciliation('agenda', { taskId });
   }
 }
 
@@ -155,7 +157,7 @@ export async function processAgendaSyncQueue(
       }
       successIds.push(entry.id!);
     } catch (err) {
-      console.error('Failed to process agenda sync queue entry:', entry, err);
+      logSyncFailure('Failed to process agenda sync queue entry', entry, err);
       if (entry.id != null) {
         await db.agendaSyncQueue.update(entry.id, { attemptCount: (entry.attemptCount || 0) + 1 });
       }
