@@ -6,7 +6,7 @@ import {
   syncAgendaTaskToSupabase, processAgendaSyncQueue,
 } from './agendaDb';
 import { getTodayKey } from './categories';
-import { estimateDurationMinutes } from './agendaDurationEstimator';
+import { estimateDurationMinutes, FLOOR_MINUTES } from './agendaDurationEstimator';
 import { generateSchedule as computeSchedule, type SchedulableTask } from './agendaScheduler';
 
 // S2-09: see useStore.ts's identical constant for the rationale.
@@ -293,7 +293,10 @@ export function useAgendaState(user: User | null) {
   }, [tasks, persistTask]);
 
   const updateTaskTitle = useCallback((id: string, title: string) => patchTask(id, { title }), [patchTask]);
-  const updateTaskDuration = useCallback((id: string, minutes: number) => patchTask(id, { estimatedMinutes: minutes }), [patchTask]);
+  // AUD-012: the domain enforces the same floor the scheduler compresses
+  // down to (FLOOR_MINUTES) — a duration below it can't exist here at all,
+  // so compression never has to "grow" an already-too-small task.
+  const updateTaskDuration = useCallback((id: string, minutes: number) => patchTask(id, { estimatedMinutes: Math.max(FLOOR_MINUTES, minutes) }), [patchTask]);
   const toggleFixed = useCallback((id: string, fixedStart?: string) => {
     const existing = tasks.find(t => t.id === id);
     if (!existing) return Promise.resolve();
@@ -358,8 +361,19 @@ export function useAgendaState(user: User | null) {
     }));
 
     const result = computeSchedule(schedulable, windowStart, windowEnd);
-    const now = Date.now();
 
+    // S3-06 (AUD-002): never persist an invalid or partial result — an
+    // invalid window or two colliding fixed commitments mean there is no
+    // schedule to save at all, not an empty/best-effort one.
+    if (result.invalidWindow || result.fixedConflicts.length > 0) {
+      return {
+        shortfallMinutes: 0,
+        invalidWindow: result.invalidWindow,
+        fixedConflicts: result.fixedConflicts,
+      };
+    }
+
+    const now = Date.now();
     const updatedTasks = tasks.map(t => {
       const scheduled = result.tasks.find(s => s.id === t.id);
       if (!scheduled) return t;
@@ -371,7 +385,7 @@ export function useAgendaState(user: User | null) {
       await persistTask(t);
     }
 
-    return { shortfallMinutes: result.shortfallMinutes };
+    return { shortfallMinutes: result.shortfallMinutes, invalidWindow: false, fixedConflicts: [] };
   }, [tasks, persistTask]);
 
   return {

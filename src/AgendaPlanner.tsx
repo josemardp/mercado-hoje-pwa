@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { type useAgendaState } from './lib/useAgendaState';
 import { formatDurationLabel } from './lib/agendaScheduler';
+import { FLOOR_MINUTES } from './lib/agendaDurationEstimator';
 
 type AgendaPlannerProps = ReturnType<typeof useAgendaState>;
 
@@ -58,11 +59,25 @@ export default function AgendaPlanner({
     setGenerating(true);
     try {
       const result = await generateSchedule(windowStart, windowEnd);
+      if (result.invalidWindow) {
+        setValidationError('O horário final precisa ser depois do inicial.');
+        setShortfallMinutes(null);
+        return;
+      }
+      if (result.fixedConflicts.length > 0) {
+        const names = tasks
+          .filter(t => result.fixedConflicts.includes(t.id))
+          .map(t => `"${t.title}"`)
+          .join(' e ');
+        setValidationError(`Dois compromissos fixos se sobrepõem (${names}) — ajuste o horário de um deles antes de montar a agenda.`);
+        setShortfallMinutes(null);
+        return;
+      }
       setShortfallMinutes(result.shortfallMinutes);
     } finally {
       setGenerating(false);
     }
-  }, [windowMode, absoluteStart, absoluteEnd, relativeHours, relativeMinutes, generateSchedule]);
+  }, [windowMode, absoluteStart, absoluteEnd, relativeHours, relativeMinutes, generateSchedule, tasks]);
 
   const handleRetryStuck = useCallback(async () => {
     setRetryingStuck(true);
@@ -224,8 +239,8 @@ export default function AgendaPlanner({
                       <input
                         className="agenda-duration-input"
                         type="number"
-                        min={5}
-                        step={5}
+                        min={FLOOR_MINUTES}
+                        step={FLOOR_MINUTES}
                         value={task.estimatedMinutes}
                         onChange={e => updateTaskDuration(task.id, Number(e.target.value))}
                         disabled={task.fixed}
