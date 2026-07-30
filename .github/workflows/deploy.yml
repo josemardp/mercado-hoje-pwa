@@ -30,11 +30,23 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: latest
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate required secrets
+        # AUD-015: missing Supabase env vars used to only surface as a
+        # runtime exception when someone opened the deployed app. Fail the
+        # pipeline instead, before spending time on build/deploy.
+        run: |
+          if [ -z "${{ secrets.VITE_SUPABASE_URL }}" ]; then
+            echo "::error::VITE_SUPABASE_URL secret is empty"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY secret is empty"
+            exit 1
+          fi
 
       - name: Create .env file from secrets
         run: |
@@ -43,8 +55,34 @@ jobs:
           VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
           EOF
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod
+
       - name: Build
         run: pnpm build
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Validate migrations on a disposable database
+        # Boots a throwaway local Postgres (Docker, available by default on
+        # ubuntu-latest runners) and applies every file under
+        # supabase/migrations/ from scratch — catches a broken/duplicated
+        # migration chain (AUD-008) before it ever reaches production.
+        run: |
+          supabase start
+          supabase stop
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
