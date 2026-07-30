@@ -83,28 +83,28 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 1 CONCLUÍDA` |
-| Fase atual | Sprint 1 concluída (cutoff/tombstone de reset por domínio, aplicado em produção); AUD-001 (crítico) resolvido |
-| Sprint ativa | Sprint 2 — Sincronização idempotente e convergência |
-| Foco atual | Iniciar Sprint 2: remover incremento duplicado de `use_count` (S2-01) e `operation_id` idempotente (S2-02) |
-| Próxima entrega | Sprint 2 — idempotência e convergência (AUD-003, AUD-004, AUD-006, AUD-009) |
-| Progresso do plano | ~28% (16/58 itens — Sprints 0 e 1 completas; 5 sprints restantes) |
-| Sprints concluídas | 2 de 7 (Sprint 0, Sprint 1) |
-| Achados resolvidos | 4 de 26 (AUD-008, AUD-015, AUD-016, AUD-001). AUD-005 parcialmente mitigado (ver decisão D-009) — não contado como resolvido. 3 outros já têm teste de regressão vermelho documentando o bug (AUD-002, AUD-004, AUD-009) — reprodução criada, correção ainda não |
+| Situação geral | `EM EXECUÇÃO — SPRINT 2 CONCLUÍDA` |
+| Fase atual | Sprint 2 concluída (idempotência de `use_count`, mutex de fila, compactação, reconciliação de `applied=false`, `userId` em filas/chaves, `AuthProvider`, sync por foco/visibilidade) |
+| Sprint ativa | Sprint 3 — Motor da Agenda correto |
+| Foco atual | Iniciar Sprint 3: reescrever o scheduler por gaps livres (S3-01), usando `agendaScheduler.test.ts` (AUD-002, hoje vermelho) como critério de aceite |
+| Próxima entrega | Sprint 3 — motor correto da Agenda (AUD-002, AUD-011, AUD-012) |
+| Progresso do plano | ~43% (25/58 itens — Sprints 0, 1 e 2 completas; 4 sprints restantes) |
+| Sprints concluídas | 3 de 7 (Sprint 0, Sprint 1, Sprint 2) |
+| Achados resolvidos | 7 de 26 (AUD-008, AUD-015, AUD-016, AUD-001, AUD-003, AUD-004, AUD-009). AUD-005 e AUD-006 parcialmente mitigados (D-009 e S2-09) — não contados como resolvidos. AUD-002 continua com teste de regressão vermelho (correção é escopo da Sprint 3) |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `470be73` (run `30539728743`, aprovado) |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (38 passaram, 4 vermelhos esperados, 1 pendente); build aprovado; migration `20260801_add_reset_cutoffs.sql` aplicada e verificada em produção |
+| Último deploy estável conhecido | commit `470be73` (run `30539728743`, aprovado) — Sprint 2 ainda não teve seu próprio run confirmado nesta atualização |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (44 passaram, 1 vermelho esperado, 1 pendente); build aprovado; `pnpm audit --prod` sem vulnerabilidades; migrations `20260801`/`20260802` aplicadas e verificadas em produção; login verificado ao vivo no navegador após a refatoração do `AuthProvider` |
 
 ### Resumo por prioridade
 
 | Prioridade | Total | Concluídos | Restantes |
 |---|---:|---:|---:|
 | Crítico | 2 | 1 | 1 |
-| Alto | 7 | 1 | 6 |
+| Alto | 7 | 4 | 3 |
 | Médio/Alto | 1 | 0 | 1 |
 | Médio | 11 | 2 | 9 |
 | Baixo | 5 | 0 | 5 |
-| **Total** | **26** | **4** | **22** |
+| **Total** | **26** | **7** | **19** |
 
 ### Critérios de cálculo
 
@@ -174,22 +174,22 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 
 ### Sprint 2 — Sincronização idempotente e convergência
 
-**Estado:** `NÃO INICIADO`
-**Progresso:** 0/9 — 0%
+**Estado:** `CONCLUÍDA`
+**Progresso:** 9/9 — 100%
 **Dependência:** Sprints 0 e 1.
 **Gate de saída:** uma ação gera um efeito; escrita rejeitada converge; contas locais permanecem isoladas.
 
 | ID | Entrega | Estado | Evidência/observação |
 |---|---|---|---|
-| S2-01 | Remover incremento duplicado de `use_count` | `NÃO INICIADO` | — |
-| S2-02 | Adicionar `operation_id` idempotente | `NÃO INICIADO` | — |
-| S2-03 | Adicionar mutex por fila | `NÃO INICIADO` | — |
-| S2-04 | Compactar operações pendentes com segurança | `NÃO INICIADO` | — |
-| S2-05 | Reconciliar `applied === false` na Rotina | `NÃO INICIADO` | — |
-| S2-06 | Reconciliar `applied === false` na Agenda | `NÃO INICIADO` | — |
-| S2-07 | Escopar Dexie e filas por `userId` | `NÃO INICIADO` | — |
-| S2-08 | Centralizar autenticação | `NÃO INICIADO` | — |
-| S2-09 | Sincronizar ao recuperar foco/visibilidade | `NÃO INICIADO` | — |
+| S2-01 | Remover incremento duplicado de `use_count` | `CONCLUÍDO` | `mark` não carrega mais `use_count`; novo tipo de fila `incrementUse` é o único caminho que toca o contador (`useStore.ts`'s `toggleItem`, `db.ts`'s `processSyncQueue`). |
+| S2-02 | Adicionar `operation_id` idempotente | `CONCLUÍDO` | Migration `20260802_idempotent_use_count.sql`: tabela `mh_processed_operations` + `increment_use_count` ganha `p_operation_id` opcional, com `INSERT ... ON CONFLICT DO NOTHING` decidindo se reaplica. Aplicada e verificada em produção (função antiga de 2 args removida, só a de 3 existe). |
+| S2-03 | Adicionar mutex por fila | `CONCLUÍDO` | `processingRef` (useRef) em `useStore.ts`/`useRotinaState.ts`/`useAgendaState.ts` — dois disparos concorrentes (online + foco + evento) não processam mais a mesma fila em paralelo. |
+| S2-04 | Compactar operações pendentes com segurança | `CONCLUÍDO` | `compactSyncQueueEntries` (`db.ts`) funde `mark/unmark/postpone/unpostpone` do mesmo item (só a mais recente importa) e soma `incrementUse` repetidos do mesmo item numa única chamada — `add`/`reset`/`category` nunca são tocados. Testado em `syncReconciliation.test.ts`. |
+| S2-05 | Reconciliar `applied === false` na Rotina | `CONCLUÍDO` | `reconcileLocalRotinaStepFromRemote` (`rotinaDb.ts`) busca a linha canônica e dispara `mh:rotina-reconciled`; `useRotinaState.ts` escuta e atualiza o estado React. Testado em `syncReconciliation.test.ts`. |
+| S2-06 | Reconciliar `applied === false` na Agenda | `CONCLUÍDO` | Mesmo padrão em `agendaDb.ts`/`useAgendaState.ts` (`mh:agenda-reconciled`). Testado em `syncReconciliation.test.ts`. |
+| S2-07 | Escopar Dexie e filas por `userId` | `CONCLUÍDO` | `rotinaStepState` reindexado pra `[dayKey+stepId+userId]` (Dexie `version(6)`, com `.upgrade()` re-chaveando linhas existentes); `userId` adicionado a `SyncQueueEntry`/`RotinaSyncQueueEntry`/`AgendaSyncQueueEntry` (opcional, retrocompatível — entradas sem `userId` são tratadas como da conta ativa). Testado em `dexie.test.ts`. |
+| S2-08 | Centralizar autenticação | `CONCLUÍDO` | Novo `src/lib/AuthProvider.tsx` — única subscription de `onAuthStateChange`; `useDayState`/`useItems` passam a receber `user` como parâmetro em vez de assinar sozinhos. Verificado ao vivo no navegador (tela de login renderiza sem erros no console). |
+| S2-09 | Sincronizar ao recuperar foco/visibilidade | `CONCLUÍDO` | Listener de `focus`/`visibilitychange` nos três hooks, com throttle de 30s, força um novo pull+merge e reprocessa a fila. Realtime não foi prototipado — decisão D-011 (custo/complexidade não justificado ainda para uso pessoal em poucos aparelhos). |
 
 ### Sprint 3 — Motor da Agenda correto
 
@@ -270,13 +270,13 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 |---|---|---:|---|---|
 | AUD-001 — reset sem tombstone | Crítico | 1 | `CONCLUÍDO` | Cutoff/tombstone server-side por `user_id+day_key+domínio` (`mh_reset_cutoffs`, migration `20260801`); RPCs condicionais rejeitam escrita anterior ao cutoff mesmo sem linha conflitante; merges filtram por cutoff e purgam o Dexie local. Testes em `lwwMerges.test.ts` (não são mais `it.fails`) e `dexie.test.ts`. |
 | AUD-002 — sobreposição na Agenda | Crítico | 3 | `NÃO INICIADO` | Teste de regressão vermelho criado (`agendaScheduler.test.ts`); correção real é escopo da Sprint 3. |
-| AUD-003 — incremento duplicado | Alto | 2 | `NÃO INICIADO` | Reprodução registrada como `describe.todo` (exige mock de concorrência de rede); correção é escopo da Sprint 2. |
-| AUD-004 — `applied=false` ignorado | Alto | 2 | `NÃO INICIADO` | Teste de regressão vermelho criado pra Rotina e Agenda (`syncReconciliation.test.ts`); correção real é escopo da Sprint 2. |
+| AUD-003 — incremento duplicado | Alto | 2 | `CONCLUÍDO` | Caminho único: `mark` não carrega mais `use_count`; um novo tipo de fila `incrementUse` (com `operation_id` idempotente, migration `20260802`) é o único caminho que toca o contador. `compactSyncQueueEntries` também funde múltiplos incrementos pendentes do mesmo item numa única chamada. Testado em `syncReconciliation.test.ts`. |
+| AUD-004 — `applied=false` ignorado | Alto | 2 | `CONCLUÍDO` | Rotina e Agenda agora buscam a linha canônica e reconciliam Dexie + estado React quando a RPC rejeita por LWW (`rotinaDb.ts`/`agendaDb.ts` + eventos `mh:rotina-reconciled`/`mh:agenda-reconciled`). Testado em `syncReconciliation.test.ts`. |
 | AUD-005 — LWW pelo relógio local | Alto | 1 | `EM IMPLEMENTAÇÃO` | Parcial: o cutoff de reset agora usa `clock_timestamp()` do servidor, não o relógio do cliente (fecha o gap de clock skew especificamente pra fronteira de reset). O versionamento de escrita campo-a-campo (toggle de item/passo fora de reset) continua em `Date.now()` do cliente — um aparelho com relógio adiantado ainda pode inflar seu próprio `updated_at` além do cutoff. Fechamento completo exige migrar todo write pra timestamp/versão emitido pelo servidor (D-009); não escopado nesta sprint. |
-| AUD-006 — ausência de atualização remota aberta | Alto | 2 | `NÃO INICIADO` | — |
+| AUD-006 — ausência de atualização remota aberta | Alto | 2 | `EM IMPLEMENTAÇÃO` | Parcial (S2-09): recuperar foco/visibilidade da aba agora reprocessa a fila e refaz o pull+merge, com throttle de 30s, nos três domínios. Falta a evolução completa sugerida pela auditoria (Realtime) — decisão D-011 registra que não foi prototipada ainda por falta de justificativa de custo/benefício. |
 | AUD-007 — logout perde pendências | Alto | 4 | `NÃO INICIADO` | — |
 | AUD-008 — migration duplicada | Alto | 0 | `CONCLUÍDO` | `20260727_add_increment_use_count_rpc.sql` renomeado pra `20260727120000_...` (ordem de dependência real confirmada pelo próprio SQL: referencia `mh_items.id UUID`/`user_id`, que só existem depois de `20260727_update_auth_and_day_items.sql`). Histórico remoto verificado diretamente em `supabase_migrations.schema_migrations`: 7 versões locais = 7 versões remotas, uma a uma. Nenhuma migration já aplicada foi re-executada. |
-| AUD-009 — isolamento local incompleto | Alto | 2 | `NÃO INICIADO` | Teste de regressão vermelho criado (`dexie.test.ts`); correção real é escopo da Sprint 2. |
+| AUD-009 — isolamento local incompleto | Alto | 2 | `CONCLUÍDO` | `rotinaStepState` reindexado pra `[dayKey+stepId+userId]` (Dexie `version(6)`); `userId` adicionado a todas as filas de sync (`SyncQueueEntry`/`RotinaSyncQueueEntry`/`AgendaSyncQueueEntry`), com leitura/limpeza filtrada pela conta ativa. Testado em `dexie.test.ts` (não é mais `it.fails`). |
 | AUD-010 — reset ambíguo/destrutivo | Médio/Alto | 4 | `NÃO INICIADO` | — |
 | AUD-011 — fixo sem horário editável | Médio | 4 | `NÃO INICIADO` | — |
 | AUD-012 — duração mínima inconsistente | Médio | 3 | `NÃO INICIADO` | — |
@@ -301,7 +301,7 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 |---|---|---|---|
 | G0 — baseline | `APROVADO` | lint, build e deploy da baseline passam | commit `7610411`; workflow `30510848715` |
 | G1 — testes/CI | `APROVADO` | Sprint 0 concluída | Testes/CI implementados e aprovados localmente e no run real do Actions (`30539728743`, commit `470be73`). |
-| G2 — integridade de dados | `PENDENTE` | Sprints 1 e 2 concluídas | — |
+| G2 — integridade de dados | `APROVADO` | Sprints 1 e 2 concluídas | Sprints 1 e 2 concluídas nesta atualização; AUD-001/003/004/009 resolvidos, AUD-005/006 parcialmente mitigados (risco residual registrado, não bloqueia o gate). |
 | G3 — Agenda correta | `PENDENTE` | Sprint 3 concluída | — |
 | G4 — UX segura | `PENDENTE` | Sprint 4 concluída | — |
 | G5 — interface acessível/PWA | `PENDENTE` | Sprint 5 concluída | — |
@@ -328,6 +328,11 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | 30/07/2026 | Sprint 1 | `pnpm build` | Aprovado |
 | 30/07/2026 | Sprint 1 | `npx supabase db query --linked -f supabase/migrations/20260801_add_reset_cutoffs.sql` | Aplicado sem erro em produção |
 | 30/07/2026 | Sprint 1 | `npx supabase migration repair --status applied 20260801` + consulta direta a `supabase_migrations.schema_migrations` | 8 versões locais = 8 versões remotas, uma a uma; tabela `mh_reset_cutoffs` confirmada em `information_schema.tables` |
+| 30/07/2026 | Sprint 2 | `npx tsc -b` / `pnpm lint` | Aprovado |
+| 30/07/2026 | Sprint 2 | `pnpm test` (Vitest) | 44 aprovados, 1 vermelho esperado (AUD-002, escopo Sprint 3), 1 pendente (AUD-012, escopo Sprint 3) — AUD-003/004×2/009 saíram da lista de vermelhos/pendentes e agora passam de verdade |
+| 30/07/2026 | Sprint 2 | `pnpm build` / `pnpm audit --prod` | Aprovado; 0 vulnerabilidades conhecidas |
+| 30/07/2026 | Sprint 2 | `npx supabase db query --linked -f supabase/migrations/20260802_idempotent_use_count.sql` + `migration repair --status applied 20260802` | Aplicado sem erro; 9 versões locais = 9 versões remotas; só a `increment_use_count` de 3 argumentos existe (a de 2 foi removida) |
+| 30/07/2026 | Sprint 2 | `pnpm dev` + Playwright (`browser_navigate`/`browser_console_messages`) contra a tela de login, antes e depois do `AuthProvider` | Console sem erros/avisos nas duas checagens; tela de login renderiza normalmente |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -366,6 +371,8 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-008 | 30/07/2026 | Dividir o commit do Sprint 0 em dois (um sem `deploy.yml`, outro só com ele) em vez de esperar a resolução do escopo OAuth | O push do commit único foi recusado pelo GitHub por falta do escopo `workflow`; dividir permitiu enviar o restante do Sprint 0 sem ficar bloqueado | Dois commits no histórico (`7116c79` e `470be73`) em vez de um; nenhum dado ou schema foi afetado | commits desta sessão |
 | D-009 | 30/07/2026 | Modelo de versão server-side (S1-01): usar `clock_timestamp()` do Postgres como cutoff de reset, mas manter o versionamento de escrita campo-a-campo em `Date.now()` do cliente por ora | Uma migração completa pra HLC/versão emitida pelo servidor em todo write (Compras, Rotina, Agenda, categorias, use_count) é um escopo muito maior que o previsto pra Sprint 1; o cutoff de reset já resolve o achado crítico (AUD-001) sem essa migração completa | AUD-001 resolvido; AUD-005 permanece parcialmente aberto (risco residual: clock skew do cliente ainda pode inflar `updated_at` além do cutoff) — fechamento completo fica pra uma decisão futura, fora do caminho crítico atual | `20260801_add_reset_cutoffs.sql`; cobertura do achado AUD-005 nesta atualização |
 | D-010 | 30/07/2026 | Reter `mh_reset_cutoffs` indefinidamente, sem expiração por janela de tempo (S1-06) | App de uso pessoal em poucos aparelhos: crescimento da tabela é limitado (~730 linhas/ano); expirar cutoffs arriscaria reabrir a janela do AUD-001 pra um aparelho que reconectasse depois do prazo de expiração | Nenhuma rotina de limpeza automática foi implementada; reavaliar somente se o volume real de uso mudar essa premissa | `20260801_add_reset_cutoffs.sql`; item S1-06 desta atualização |
+| D-011 | 30/07/2026 | Não prototipar Realtime nesta sprint (S2-09); resolver AUD-006 só com sync por foco/visibilidade + throttle | O plano condiciona o protótipo de Realtime a "habilitar apenas se o ganho justificar consumo/complexidade" — não há evidência de reclamação de latência entre aparelhos, e o app é de uso pessoal em poucos dispositivos; sync por foco já cobre o caso comum (reabrir/trocar de aba) | AUD-006 fica parcialmente mitigado, não resolvido; reavaliar Realtime se o padrão de uso mudar (mais aparelhos simultâneos, expectativa de tempo real) | `useStore.ts`/`useRotinaState.ts`/`useAgendaState.ts` (efeito de foco/visibilidade); cobertura do achado AUD-006 nesta atualização |
+| D-012 | 30/07/2026 | Tratar escrita rejeitada por LWW (`applied === false`) como sucesso (retorna `true`) depois de reconciliar, em vez de `false` como o teste vermelho original de AUD-004 assumia | Reenfileirar uma escrita que o servidor rejeitou de propósito (porque já existe algo mais novo) nunca teria sucesso — ficaria tentando pra sempre até virar uma entrada "travada" sem nenhum efeito real. A reconciliação (buscar linha canônica, atualizar Dexie e estado React) já resolve o problema real do achado; não sobra nada genuíno pra retentar | `syncRotinaStepToSupabase`/`syncAgendaTaskToSupabase` retornam `true` após reconciliar; testes de `syncReconciliation.test.ts` reescritos pra verificar a reconciliação em vez do valor de retorno | `src/lib/rotinaDb.ts`, `src/lib/agendaDb.ts`, `syncReconciliation.test.ts` |
 
 ### Modelo para nova decisão
 
@@ -377,27 +384,28 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Sprint 1 concluída (AUD-001 resolvido, AUD-005 parcialmente mitigado). Iniciar a Sprint 2: remover o incremento duplicado de `use_count` (S2-01, AUD-003), adicionar `operation_id` idempotente (S2-02) e tratar `applied === false` em Rotina/Agenda (S2-05/S2-06, AUD-004) — os testes vermelhos já existem em `syncReconciliation.test.ts`.
+Sprint 2 concluída e gate G2 aprovado. Iniciar a Sprint 3 (motor da Agenda): reescrever o scheduler por gaps livres (S3-01, AUD-002), atacando o `it.fails` já existente em `agendaScheduler.test.ts`.
 
 ### Sequência recomendada
 
-1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 2 antes de codar.
-2. S2-01: escolher uma única estratégia pra `use_count` (o app já tem `atomicIncrementUseCount`/`increment_use_count` — decidir se ele substitui totalmente a entrada `mark` da fila ou vice-versa) e remover o caminho duplicado.
-3. S2-02/S2-03: `operation_id` idempotente nas mutações que incrementam contadores; mutex por fila pra impedir processamento concorrente do mesmo `processPendingQueue`.
-4. S2-05/S2-06: usar `syncReconciliation.test.ts` (AUD-004, hoje `it.fails`) como critério de aceite — ler o booleano `applied`, buscar a linha canônica quando `false`, atualizar Dexie e estado React, tanto em Rotina quanto Agenda.
-5. S2-07: incluir `userId` na chave composta da Rotina (`dexie.test.ts` já documenta o gap como AUD-009, hoje `it.fails`) e nos índices/filtros relevantes.
-6. Ao final da Sprint 2: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
-7. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto — decidir quando for necessário testar concorrência real de dois aparelhos.
+1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 3 antes de codar.
+2. S3-01: reescrever `generateSchedule` (`agendaScheduler.ts`) construindo os intervalos livres entre âncoras fixas primeiro, alocando/comprimindo tarefas dentro da capacidade real de cada intervalo — não pela escala global ingênua atual.
+3. S3-02: detectar compromissos fixos sobrepostos e rejeitar a geração com uma mensagem clara, em vez de produzir uma agenda inválida.
+4. S3-03/S3-04: comprimir só dentro da capacidade de cada gap; unificar a duração mínima entre o motor e a UI (hoje só o motor tem piso de 10min).
+5. S3-05/S3-06: política explícita pra janela atravessando meia-noite, duração zero/inválida, fixo sem horário e tarefas concluídas durante recálculo; nunca persistir um resultado inválido/parcial.
+6. S3-07: testes de propriedade (nenhuma sobreposição, `end >= start`, todas as tarefas aparecem uma vez) — usar `agendaScheduler.test.ts` (AUD-002, hoje `it.fails`) como critério de aceite final.
+7. Ao final da Sprint 3: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
+8. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
 
 ### Não fazer ainda
 
-- Não alterar RPCs de produção além do que a Sprint 2 exigir, com migration versionada.
+- Não alterar RPCs de produção além do que a Sprint 3 exigir, com migration versionada.
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
-- Não implementar Realtime nesta sprint (S2-09 prevê só um protótipo, condicional ao ganho justificar o consumo).
-- Não iniciar melhorias visuais da Sprint 5.
+- Não revisitar a decisão de não prototipar Realtime (D-011) sem um motivo concreto novo.
+- Não iniciar melhorias visuais da Sprint 5 nem o editor completo da Agenda da Sprint 4.
 - Não adicionar evoluções de produto do backlog.
-- Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009) — isso é maior que o escopo listado pra Sprint 2.
-- Não iniciar a Sprint 3 antes do gate de saída da Sprint 2 (uma ação gera um efeito; escrita rejeitada converge; contas locais permanecem isoladas).
+- Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009).
+- Não iniciar a Sprint 4 antes do gate de saída da Sprint 3 (nenhuma agenda válida contém sobreposição; falta de tempo é calculada corretamente).
 
 ## 14. Histórico de evolução
 
@@ -413,6 +421,11 @@ Sprint 1 concluída (AUD-001 resolvido, AUD-005 parcialmente mitigado). Iniciar 
 | 30/07/2026 | Sprint 0 | Push do workflow bloqueado por falta do escopo OAuth `workflow`; commit dividido em dois para não travar o restante do Sprint 0 | `feat(sprint-0)` (`7116c79`) enviado sem o workflow; proprietário reautenticou o `gh` com `gh auth login -s workflow`; `ci(sprint-0)` (`470be73`) com o workflow enviado em seguida | B-003 fechado; commits `7116c79` e `470be73` |
 | 30/07/2026 | Sprint 0 | Primeiro run real do CI atualizado confirmado aprovado (`gh run watch 30539728743`) — lint, typecheck, test, audit, build, `supabase start`/`stop` e deploy todos verdes | Sprint 0 encerrada como `CONCLUÍDA`; gate G1 `APROVADO`; AUD-016 concluído | run `30539728743`, commit `470be73` |
 | 30/07/2026 | Sprint 1 | Cutoff/tombstone de reset por `user_id+day_key+domínio` criado (`mh_reset_cutoffs`, RPCs `reset_day_domain`/`get_reset_cutoff`, `upsert_day_item_if_newer`/`upsert_rotina_step_if_newer` atualizados) e aplicado em produção | AUD-001 (crítico) resolvido; AUD-005 parcialmente mitigado (D-009); Sprint 1 concluída, gate de saída atendido | migration `20260801_add_reset_cutoffs.sql`; testes `lwwMerges.test.ts`/`dexie.test.ts` |
+| 30/07/2026 | Sprint 2 | `use_count` reduzido a um único caminho (`incrementUse` idempotente com `operation_id`, migration `20260802`); mutex por fila; `compactSyncQueueEntries` funde entradas redundantes | AUD-003 resolvido | migration `20260802_idempotent_use_count.sql`; `syncReconciliation.test.ts` |
+| 30/07/2026 | Sprint 2 | Rotina e Agenda passam a reconciliar quando a RPC rejeita por LWW (`applied === false`) — busca linha canônica, atualiza Dexie e estado React via evento | AUD-004 resolvido (decisão D-012 sobre o valor de retorno) | `rotinaDb.ts`, `agendaDb.ts`, `useRotinaState.ts`, `useAgendaState.ts` |
+| 30/07/2026 | Sprint 2 | `userId` incluído em todas as filas de sync; `rotinaStepState` reindexado pra `[dayKey+stepId+userId]` (Dexie `version(6)`, com upgrade re-chaveando linhas existentes) | AUD-009 resolvido | `db.ts`; `dexie.test.ts` |
+| 30/07/2026 | Sprint 2 | Autenticação centralizada num `AuthProvider` único; `useDayState`/`useItems` deixam de assinar `onAuthStateChange` por conta própria | Duplicação de subscription eliminada; verificado ao vivo no navegador (login sem erros) | `src/lib/AuthProvider.tsx`; `App.tsx` |
+| 30/07/2026 | Sprint 2 | Sync por foco/visibilidade (throttle de 30s) adicionado aos três hooks; decisão registrada de não prototipar Realtime ainda | AUD-006 parcialmente mitigado (D-011); Sprint 2 concluída, gate G2 aprovado | `useStore.ts`/`useRotinaState.ts`/`useAgendaState.ts` |
 
 ### Modelo de atualização
 

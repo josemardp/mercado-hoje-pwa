@@ -64,13 +64,50 @@ export function mergeAgendaTasksWithLWW(
 }
 
 /**
+ * Fetch the canonical mh_agenda_tasks row and overwrite the local copy with
+ * it, then notify useAgendaState so the on-screen list reflects it. Used
+ * when the conditional RPC rejects our write as older than what's already
+ * stored (AUD-004) — see reconcileLocalRotinaStepFromRemote in rotinaDb.ts
+ * for the equivalent Rotina-side fix.
+ */
+async function reconcileLocalAgendaTaskFromRemote(taskId: string, userId: string): Promise<void> {
+  const { data: canonical } = await supabase
+    .from('mh_agenda_tasks')
+    .select('*')
+    .eq('id', taskId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (canonical) {
+    await db.agendaTasks.put({
+      id: canonical.id as string,
+      dayKey: canonical.day_key as string,
+      title: canonical.title as string,
+      estimatedMinutes: Number(canonical.estimated_minutes) || 0,
+      fixed: !!canonical.fixed,
+      fixedStart: (canonical.fixed_start as string) || undefined,
+      order: Number(canonical.order) || 0,
+      scheduledStart: (canonical.scheduled_start as string) || undefined,
+      scheduledEnd: (canonical.scheduled_end as string) || undefined,
+      done: !!canonical.done,
+      deleted: !!canonical.deleted,
+      updatedAt: new Date(canonical.updated_at as string).getTime(),
+      userId: canonical.user_id as string,
+    });
+    window.dispatchEvent(new CustomEvent('mh:agenda-reconciled', { detail: { taskId } }));
+  }
+}
+
+/**
  * Push a single Agenda task to Supabase via the conditional RPC — a stale
  * write (including a soft-delete) can never overwrite a newer one already
- * stored server-side.
+ * stored server-side. Returns true even when the RPC rejects the write
+ * (applied === false): reconcileLocalAgendaTaskFromRemote() above already
+ * pulled the canonical value down, so there is nothing left to resync.
  */
 export async function syncAgendaTaskToSupabase(task: AgendaTaskRecord): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('upsert_agenda_task_if_newer', {
+    const { data: applied, error } = await supabase.rpc('upsert_agenda_task_if_newer', {
       p_id: task.id,
       p_day_key: task.dayKey,
       p_title: task.title,
@@ -86,7 +123,13 @@ export async function syncAgendaTaskToSupabase(task: AgendaTaskRecord): Promise<
       p_user_id: task.userId,
     });
 
-    return !error;
+    if (error) return false;
+
+    if (applied === false) {
+      await reconcileLocalAgendaTaskFromRemote(task.id, task.userId);
+    }
+
+    return true;
   } catch {
     return false;
   }

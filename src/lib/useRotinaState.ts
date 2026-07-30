@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
 import { db, type RotinaStepStateRecord, fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain } from './db';
 import {
@@ -11,6 +11,9 @@ export interface RotinaStateData {
   done: Record<string, boolean>;
 }
 
+// S2-09: see useStore.ts's identical constant for the rationale.
+const FOCUS_SYNC_THROTTLE_MS = 30000;
+
 // Takes `user` as a parameter (resolved by useDayState in App.tsx) instead of
 // running its own auth.onAuthStateChange subscription — two independent
 // listeners could briefly disagree about who's logged in (e.g. across a
@@ -22,6 +25,7 @@ export function useRotinaState(user: User | null) {
   const [dayChanged, setDayChanged] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
+  const [focusRefresh, setFocusRefresh] = useState(false);
 
   const todayKey = getTodayKey();
 
@@ -42,43 +46,57 @@ export function useRotinaState(user: User | null) {
     return () => clearInterval(interval);
   }, [todayKey]);
 
+  // AUD-009: entries without a userId predate this field and are treated as
+  // belonging to whoever is currently logged in — see SyncQueueEntry.userId
+  // in db.ts for the full rationale (shared across all three queues).
+  const belongsToActiveUser = useCallback((e: import('./db').RotinaSyncQueueEntry) => !e.userId || e.userId === user?.id, [user]);
+
   const refreshStuckSyncCount = useCallback(async () => {
-    const count = await db.rotinaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+    const count = await db.rotinaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
     setStuckSyncCount(count);
-  }, []);
+  }, [belongsToActiveUser]);
+
+  // S2-03: mutex — see useStore.ts's processPendingQueue for why this is
+  // needed (overlapping triggers processing the same pending entries twice).
+  const processingRef = useRef(false);
 
   const processPendingQueue = useCallback(async () => {
-    if (!user) return;
-    const allEntries = await db.rotinaSyncQueue.toCollection().sortBy('timestamp');
-    const entries = allEntries.filter(e => (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
+    if (!user || processingRef.current) return;
+    processingRef.current = true;
+    try {
+      const allEntries = await db.rotinaSyncQueue.toCollection().sortBy('timestamp');
+      const entries = allEntries.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
 
-    if (entries.length > 0) {
-      setSyncStatus('syncing');
-      const successIds = await processRotinaSyncQueue(user.id, entries);
+      if (entries.length > 0) {
+        setSyncStatus('syncing');
+        const successIds = await processRotinaSyncQueue(user.id, entries);
 
-      for (const id of successIds) {
-        await db.rotinaSyncQueue.delete(id);
+        for (const id of successIds) {
+          await db.rotinaSyncQueue.delete(id);
+        }
+
+        if (successIds.length === entries.length) {
+          setSyncStatus('synced');
+          setTimeout(() => setSyncStatus('idle'), 2000);
+        } else {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }
       }
 
-      if (successIds.length === entries.length) {
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 2000);
-      } else {
-        setSyncStatus('error');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      }
+      await refreshStuckSyncCount();
+    } finally {
+      processingRef.current = false;
     }
-
-    await refreshStuckSyncCount();
-  }, [user, refreshStuckSyncCount]);
+  }, [user, refreshStuckSyncCount, belongsToActiveUser]);
 
   const retryStuckEntries = useCallback(async () => {
-    const stuck = await db.rotinaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
+    const stuck = await db.rotinaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
     for (const entry of stuck) {
       await db.rotinaSyncQueue.update(entry.id!, { attemptCount: 0 });
     }
     await processPendingQueue();
-  }, [processPendingQueue]);
+  }, [processPendingQueue, belongsToActiveUser]);
 
   // ─── Online/offline listener ────────────────────────────────────────
   useEffect(() => {
@@ -100,16 +118,38 @@ export function useRotinaState(user: User | null) {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const count = await db.rotinaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+      const count = await db.rotinaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
       setStuckSyncCount(count);
     })();
-  }, [user]);
+  }, [user, belongsToActiveUser]);
 
   useEffect(() => {
     if (!(isOnline && user)) return;
     (async () => { await processPendingQueue(); })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);
+
+  // S2-09 (AUD-006): see useStore.ts's identical effect for the rationale.
+  const lastFocusSyncRef = useRef(0);
+  useEffect(() => {
+    const trigger = () => {
+      if (!user || !isOnline) return;
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
+      lastFocusSyncRef.current = now;
+      processPendingQueue();
+      setFocusRefresh(prev => !prev);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') trigger();
+    };
+    window.addEventListener('focus', trigger);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', trigger);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user, isOnline, processPendingQueue]);
 
   // ─── Load today's state, LWW-merged with remote ────────────────────
   useEffect(() => {
@@ -167,7 +207,7 @@ export function useRotinaState(user: User | null) {
             const survivingIds = new Set(userMerged.map(item => item.stepId));
             const staleIds = freshLocalItems.filter(item => !survivingIds.has(item.stepId)).map(item => item.stepId);
             if (staleIds.length > 0) {
-              await db.rotinaStepState.bulkDelete(staleIds.map(id => [todayKey, id] as [string, string]));
+              await db.rotinaStepState.bulkDelete(staleIds.map(id => [todayKey, id, userId] as [string, string, string]));
             }
 
             await db.rotinaStepState.bulkPut(userMerged);
@@ -191,10 +231,32 @@ export function useRotinaState(user: User | null) {
 
     load();
     return () => { cancelled = true; };
-  }, [todayKey, dayChanged, isOnline, user]);
+  }, [todayKey, dayChanged, isOnline, user, focusRefresh]);
 
-  const addToSyncQueueLocal = useCallback(async (entry: Omit<import('./db').RotinaSyncQueueEntry, 'id' | 'attemptCount'>) => {
-    await db.rotinaSyncQueue.add({ ...entry, attemptCount: 0 });
+  // AUD-004: rotinaDb.ts dispatches this after reconciling a rejected write
+  // (applied === false) with the canonical remote row. That only touches
+  // Dexie — this hook's own `done` map is in React memory and would
+  // otherwise keep showing the stale value until the next full reload.
+  useEffect(() => {
+    if (!user) return;
+    const userId = user.id;
+    const handler = (e: Event) => {
+      const { stepId } = (e as CustomEvent<{ stepId: string }>).detail;
+      (async () => {
+        const rec = await db.rotinaStepState.get([todayKey, stepId, userId]);
+        setState(prev => {
+          const done = { ...prev.done };
+          if (rec?.done) done[stepId] = true; else delete done[stepId];
+          return { done };
+        });
+      })();
+    };
+    window.addEventListener('mh:rotina-reconciled', handler);
+    return () => window.removeEventListener('mh:rotina-reconciled', handler);
+  }, [todayKey, user]);
+
+  const addToSyncQueueLocal = useCallback(async (entry: Omit<import('./db').RotinaSyncQueueEntry, 'id' | 'attemptCount' | 'userId'>) => {
+    await db.rotinaSyncQueue.add({ ...entry, userId: user?.id, attemptCount: 0 });
     if (isOnline && user) processPendingQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);

@@ -3,7 +3,7 @@ import { type User } from '@supabase/supabase-js';
 import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
   syncDayItemToSupabase, loadDayStateFromSupabase, mergeDayItemsWithLWW,
-  processSyncQueue, atomicIncrementUseCount, syncCategoryToSupabase,
+  processSyncQueue, syncCategoryToSupabase, compactSyncQueueEntries,
   initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
   fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain,
 } from './db';
@@ -20,42 +20,25 @@ function getTodayItems(): DayStateData {
   return { checked: {}, postponed: {}, inToday: {} };
 }
 
-export function useDayState() {
-  const [user, setUser] = useState<User | null>(null);
+// S2-09: don't re-sync on every single focus/visibility blip (e.g. rapid
+// tab switching) — once per window is enough to catch up with whatever
+// another device changed while this tab sat in the background.
+const FOCUS_SYNC_THROTTLE_MS = 30000;
+
+// S2-08: takes `user` as a parameter, resolved once by AuthProvider — see
+// useRotinaState/useAgendaState for the same convention. This hook used to
+// run its own getSession()/onAuthStateChange subscription in parallel with
+// useItems()' identical one; AuthProvider is now the single source of truth.
+export function useDayState(user: User | null) {
   const [state, setState] = useState<DayStateData>(getTodayItems());
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [dayChanged, setDayChanged] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
+  const [focusRefresh, setFocusRefresh] = useState(false);
 
   const todayKey = getTodayKey();
-  // Set when Supabase reports the PASSWORD_RECOVERY event — i.e. the user
-  // just landed here from an "esqueci minha senha" email link. Without
-  // surfacing this, the recovery link silently logs the user in and the
-  // "definir nova senha" step stays hidden behind the footer button.
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
-
-  // ─── Supabase Auth listener ─────────────────────────────────────────
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
-      if (!session) {
-        setState(getTodayItems());
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   // ─── Day transition detection ──────────────────────────────────
   useEffect(() => {
@@ -105,60 +88,81 @@ export function useDayState() {
     await db.rotinaSyncQueue.clear();
     await db.agendaTasks.clear();
     await db.agendaSyncQueue.clear();
-    setUser(null);
+    // `user` itself is owned by AuthProvider now — signOut() above already
+    // triggers its onAuthStateChange listener, which clears it there.
     setState(getTodayItems());
   }, []);
 
+  // AUD-009: entries without a userId predate this field and are treated as
+  // belonging to whoever is currently logged in, so nothing already pending
+  // gets silently stranded by this change — see SyncQueueEntry.userId.
+  const belongsToActiveUser = useCallback((e: SyncQueueEntry) => !e.userId || e.userId === user?.id, [user]);
+
   const refreshStuckSyncCount = useCallback(async () => {
-    const count = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+    const count = await db.syncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
     setStuckSyncCount(count);
-  }, []);
+  }, [belongsToActiveUser]);
+
+  // S2-03: mutex — 'online', the mount effect, and 'mh:queue-updated' can
+  // all fire close together and each call processPendingQueue(); without
+  // this, two overlapping runs could both read the same pending entries
+  // before either finishes deleting them, syncing every one of them twice.
+  const processingRef = useRef(false);
 
   const processPendingQueue = useCallback(async () => {
-    if (!user) return;
-    const allEntries = await db.syncQueue.toCollection().sortBy('timestamp');
-    // Entries that already exhausted their retries are left alone here —
-    // they only move again via an explicit retryStuckEntries() call — so a
-    // permanently-broken entry doesn't hammer the API forever in silence.
-    const entries = allEntries.filter(e => (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
+    if (!user || processingRef.current) return;
+    processingRef.current = true;
+    try {
+      const allEntries = await db.syncQueue.toCollection().sortBy('timestamp');
+      // Entries that already exhausted their retries are left alone here —
+      // they only move again via an explicit retryStuckEntries() call — so a
+      // permanently-broken entry doesn't hammer the API forever in silence.
+      const pending = allEntries.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
+      const { entries, idsCoveredBy } = compactSyncQueueEntries(pending);
 
-    if (entries.length > 0) {
-      setSyncStatus('syncing');
-      const successIds = await processSyncQueue(user.id, entries);
+      if (entries.length > 0) {
+        setSyncStatus('syncing');
+        const successIds = await processSyncQueue(user.id, entries);
 
-      for (const id of successIds) {
-        await db.syncQueue.delete(id);
+        for (const id of successIds) {
+          const covered = idsCoveredBy.get(id) || [id];
+          for (const coveredId of covered) {
+            await db.syncQueue.delete(coveredId);
+          }
+        }
+
+        if (successIds.length === entries.length) {
+          setSyncStatus('synced');
+          setTimeout(() => setSyncStatus('idle'), 2000);
+        } else {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }
       }
 
-      if (successIds.length === entries.length) {
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 2000);
-      } else {
-        setSyncStatus('error');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      }
+      await refreshStuckSyncCount();
+    } finally {
+      processingRef.current = false;
     }
-
-    await refreshStuckSyncCount();
-  }, [user, refreshStuckSyncCount]);
+  }, [user, refreshStuckSyncCount, belongsToActiveUser]);
 
   const retryStuckEntries = useCallback(async () => {
-    const stuck = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
+    const stuck = await db.syncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
     for (const entry of stuck) {
       await db.syncQueue.update(entry.id!, { attemptCount: 0 });
     }
     await processPendingQueue();
-  }, [processPendingQueue]);
+  }, [processPendingQueue, belongsToActiveUser]);
 
   // Reflect stuck-entry count as soon as we know who's logged in, not only
   // after the first sync run this session.
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const count = await db.syncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+      const count = await db.syncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
       setStuckSyncCount(count);
     })();
-  }, [user]);
+  }, [user, belongsToActiveUser]);
 
   // ─── Online/offline listener + sync queue reprocessing ──
   useEffect(() => {
@@ -201,6 +205,32 @@ export function useDayState() {
     return () => window.removeEventListener('mh:queue-updated', handler);
   }, [isOnline, user, processPendingQueue]);
 
+  // S2-09 (AUD-006): pulls happen on login, day change and online/offline —
+  // never just from switching back to an already-open tab, so two open
+  // devices can silently drift until something else triggers a reload.
+  // Coming back to this tab (focus/visibility) now also re-syncs, throttled
+  // so rapid tab-switching doesn't hammer the API.
+  const lastFocusSyncRef = useRef(0);
+  useEffect(() => {
+    const trigger = () => {
+      if (!user || !isOnline) return;
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
+      lastFocusSyncRef.current = now;
+      processPendingQueue();
+      setFocusRefresh(prev => !prev);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') trigger();
+    };
+    window.addEventListener('focus', trigger);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', trigger);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user, isOnline, processPendingQueue]);
+
   // db.ts dispatches this after remapItemId (name-collision reconciliation)
   // moves an item to its canonical id. That only touches Dexie — this
   // hook's own checked/postponed/inToday state is in React memory and
@@ -229,7 +259,11 @@ export function useDayState() {
   // ─── Load day state with LWW merge + carry over postponed ──────
   useEffect(() => {
     if (!user) {
+      // Covers both "never logged in yet" and "session ended externally"
+      // (expired/revoked without going through this app's own logout button)
+      // — either way, nothing here should keep showing a previous user's data.
       (async () => {
+        setState(getTodayItems());
         setLoading(false);
       })();
       return;
@@ -379,7 +413,7 @@ export function useDayState() {
     return () => {
       cancelled = true;
     };
-  }, [todayKey, dayChanged, isOnline, user]);
+  }, [todayKey, dayChanged, isOnline, user, focusRefresh]);
 
   const saveSingleItemState = useCallback(async (itemId: string, itemState: Omit<DayItemRecord, 'dayKey' | 'itemId' | 'userId' | 'updatedAt'>) => {
     if (!user) return;
@@ -414,9 +448,10 @@ export function useDayState() {
     }
   }, [todayKey, isOnline, user]);
 
-  const addToSyncQueueLocal = useCallback(async (entry: Omit<SyncQueueEntry, 'id' | 'attemptCount'>) => {
+  const addToSyncQueueLocal = useCallback(async (entry: Omit<SyncQueueEntry, 'id' | 'attemptCount' | 'userId'>) => {
     await db.syncQueue.add({
       ...entry,
+      userId: user?.id,
       attemptCount: 0,
     });
     if (isOnline && user) {
@@ -496,16 +531,25 @@ export function useDayState() {
     });
 
     if (willBeChecked) {
-      if (isOnline) {
-        atomicIncrementUseCount(itemId, user.id, 1).catch(() => {});
-      }
-
       await addToSyncQueueLocal({
         type: 'mark',
         dayKey: todayKey,
         itemId,
-        useCount: updatedCount,
-        lastUsed: updatedTime,
+        timestamp: updatedTime!,
+      });
+
+      // AUD-003: a single strategy for use_count — an idempotent atomic
+      // increment, queued and retried like every other write, instead of
+      // also enqueuing an absolute "use_count = N" write for the same
+      // action. Combining both let a queued write with a slightly later
+      // timestamp silently clobber a concurrent increment from another
+      // device. operationId stays stable across retries of this same entry.
+      await addToSyncQueueLocal({
+        type: 'incrementUse',
+        dayKey: todayKey,
+        itemId,
+        increment: 1,
+        operationId: crypto.randomUUID(),
         timestamp: updatedTime!,
       });
     } else {
@@ -522,7 +566,7 @@ export function useDayState() {
     }
 
     return willBeChecked;
-  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, isOnline, user]);
+  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
   const postponeItem = useCallback(async (itemId: string) => {
     if (!user) return state;
@@ -645,11 +689,9 @@ export function useDayState() {
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
   return {
-    user,
     signInWithPassword,
     sendPasswordReset,
     updatePassword,
-    passwordRecovery,
     logout,
     state,
     loading,
@@ -667,8 +709,10 @@ export function useDayState() {
   };
 }
 
-export function useItems() {
-  const [user, setUser] = useState<User | null>(null);
+// S2-08: takes `user` as a parameter (AuthProvider) instead of running its
+// own getSession()/onAuthStateChange subscription in parallel with
+// useDayState's identical one — see useDayState for the same change.
+export function useItems(user: User | null) {
   const [items, setItems] = useState<ItemRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -680,21 +724,13 @@ export function useItems() {
     currentUserIdRef.current = user?.id ?? null;
   }, [user]);
 
-  // Auth changes listener
+  // Clears the catalog on logout/session-loss — mirrors the reset that used
+  // to happen inside this hook's own onAuthStateChange listener.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        setItems([]);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!user) {
+      (async () => { setItems([]); })();
+    }
+  }, [user]);
 
   // db.ts dispatches this after a name-collision remap. loadItems()'s own
   // remote merge can race with remapItemId's Dexie cleanup and resurrect
