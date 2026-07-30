@@ -10,6 +10,7 @@ import RotinaTab from './RotinaTab';
 import { ROTINA_STEPS } from './lib/rotinaSteps';
 import { useRotinaState } from './lib/useRotinaState';
 import { useAgendaState } from './lib/useAgendaState';
+import Modal from './Modal';
 
 // stroke uses var(--on-accent), not a hardcoded white: in dark mode the
 // checked category color is a bright tint, and white-on-bright fails contrast.
@@ -215,6 +216,9 @@ function AppInner() {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<ItemRecord[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // AUD-017: ARIA combobox pattern — the input keeps real DOM focus; arrow
+  // keys move this "virtual" highlight instead of tabbing between options.
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [correctionItemId, setCorrectionItemId] = useState<string | null>(null);
   const [correctionShowPicker, setCorrectionShowPicker] = useState(false);
   const [celebration, setCelebration] = useState('');
@@ -226,6 +230,7 @@ function AppInner() {
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const addInputRef = useRef<HTMLInputElement>(null);
+  const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({});
 
   // PWA manifest shortcut ("Adicionar item", long-press the app icon) lands
   // here with ?action=add-item. Wait for auth to resolve either way: if
@@ -351,6 +356,7 @@ function AppInner() {
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
+    setHighlightedIndex(-1);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -517,10 +523,10 @@ function AppInner() {
             <h1 className="login-title">Meu Diário</h1>
             <p className="login-desc">Compras, rotina e agenda no seu dia a dia.</p>
             {authLinkError && (
-              <div className="login-error" style={{ marginBottom: 12 }}>{authLinkError}</div>
+              <div className="login-error" role="alert" style={{ marginBottom: 12 }}>{authLinkError}</div>
             )}
             {resetSent ? (
-              <div className="login-success">
+              <div className="login-success" role="status">
                 ✉️ Enviamos um link de redefinição de senha pro seu e-mail! Verifique sua caixa de entrada.
               </div>
             ) : (
@@ -569,7 +575,7 @@ function AppInner() {
                     </button>
                   </div>
                 )}
-                {authError && <div className="login-error">{authError}</div>}
+                {authError && <div className="login-error" role="alert">{authError}</div>}
                 <button type="submit" className="login-submit-btn" disabled={authLoading}>
                   {authLoading
                     ? (forgotMode ? 'Enviando...' : 'Entrando...')
@@ -593,6 +599,18 @@ function AppInner() {
   return (
     <div className="page">
 
+      {needRefresh && (
+        <div className="update-banner update-banner-global" role="status">
+          <span>✨ Nova versão disponível.</span>
+          <button
+            className="update-banner-btn"
+            onClick={() => updateServiceWorker(true)}
+          >
+            Atualizar
+          </button>
+        </div>
+      )}
+
       {activeTab !== 'rotina' && (
       <header>
         <div className="header-top">
@@ -601,7 +619,7 @@ function AppInner() {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <h1>Meu Diário</h1>
               {syncStatus !== 'idle' && (
-                <span className="sync-indicator">
+                <span className="sync-indicator" role="status" aria-live="polite">
                   {syncStatus === 'syncing' && '🔄 salvando...'}
                   {syncStatus === 'synced' && '✅ salvo'}
                   {syncStatus === 'error' && '⚠️ erro sync'}
@@ -662,22 +680,30 @@ function AppInner() {
             </button>
           </div>
         )}
-        {needRefresh && (
-          <div className="update-banner" role="status">
-            <span>✨ Nova versão disponível.</span>
-            <button
-              className="update-banner-btn"
-              onClick={() => updateServiceWorker(true)}
-            >
-              Atualizar
-            </button>
-          </div>
-        )}
       </header>
       )}
 
-      {/* ─── TABS ─── */}
+      {/* ─── TABS (AUD-017: role="tablist"/"tab", seta/Home/End, roving tabindex) ─── */}
       {(() => {
+        // Visual order (Rotina on its own row above the three Compras tabs)
+        // is also the keyboard traversal order — arrows move through this
+        // flat sequence regardless of which row a tab is visually in.
+        const tabOrder: TabKey[] = ['rotina', 'hoje', 'concluidos', 'proximo'];
+
+        const handleTabKeyDown = (e: React.KeyboardEvent, key: TabKey) => {
+          const idx = tabOrder.indexOf(key);
+          let nextIdx: number | null = null;
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = (idx + 1) % tabOrder.length;
+          else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = (idx - 1 + tabOrder.length) % tabOrder.length;
+          else if (e.key === 'Home') nextIdx = 0;
+          else if (e.key === 'End') nextIdx = tabOrder.length - 1;
+          if (nextIdx === null) return;
+          e.preventDefault();
+          const nextKey = tabOrder[nextIdx];
+          setActiveTab(nextKey);
+          tabRefs.current[nextKey]?.focus();
+        };
+
         const renderTab = (tab: (typeof TABS)[number]) => {
           const count =
             tab.key === 'hoje'
@@ -687,11 +713,19 @@ function AppInner() {
               : tab.key === 'proximo'
               ? postponedItems.length
               : ROTINA_STEPS.length - Object.keys(rotinaState.done).length;
+          const selected = activeTab === tab.key;
           return (
             <button
               key={tab.key}
-              className={`tab-btn${activeTab === tab.key ? ' active' : ''}`}
+              ref={el => { tabRefs.current[tab.key] = el; }}
+              role="tab"
+              id={`tab-${tab.key}`}
+              aria-selected={selected}
+              aria-controls={`panel-${tab.key}`}
+              tabIndex={selected ? 0 : -1}
+              className={`tab-btn${selected ? ' active' : ''}`}
               onClick={() => setActiveTab(tab.key)}
+              onKeyDown={e => handleTabKeyDown(e, tab.key)}
             >
               <span className="tab-emoji">{tab.emoji}</span>
               <span className="tab-label">{tab.label}</span>
@@ -702,14 +736,19 @@ function AppInner() {
         const rotinaTab = TABS.find(t => t.key === 'rotina')!;
         const comprasTabs = TABS.filter(t => t.key !== 'rotina');
         return (
-          <div className="tabs-bar tabs-bar-pyramid">
+          <div className="tabs-bar tabs-bar-pyramid" role="tablist" aria-label="Seções do app">
             <div className="tabs-row tabs-row-top">{renderTab(rotinaTab)}</div>
             <div className="tabs-row tabs-row-bottom">{comprasTabs.map(renderTab)}</div>
           </div>
         );
       })()}
 
-      <main className={activeTab === 'rotina' ? 'main-rotina' : undefined}>
+      <main
+        className={activeTab === 'rotina' ? 'main-rotina' : undefined}
+        role="tabpanel"
+        id={`panel-${activeTab}`}
+        aria-labelledby={`tab-${activeTab}`}
+      >
         {activeTab === 'rotina' ? (
           <RotinaTab {...rotinaState} agenda={agendaState} />
         ) : (
@@ -725,12 +764,39 @@ function AppInner() {
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => {
+                if (showSuggestions && suggestions.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedIndex(i => (i + 1) % suggestions.length);
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedIndex(i => (i - 1 + suggestions.length) % suggestions.length);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    setShowSuggestions(false);
+                    setHighlightedIndex(-1);
+                    return;
+                  }
+                  if (e.key === 'Enter' && highlightedIndex >= 0) {
+                    e.preventDefault();
+                    handleSelectSuggestion(suggestions[highlightedIndex]);
+                    return;
+                  }
+                }
                 if (e.key === 'Enter' && inputValue.trim() && !showSuggestions) {
                   handleCreateNew();
                 }
               }}
               aria-label="Adicionar novo item à lista"
               autoComplete="off"
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-controls="add-suggestions-listbox"
+              aria-autocomplete="list"
+              aria-activedescendant={highlightedIndex >= 0 ? `suggestion-${suggestions[highlightedIndex]?.id}` : undefined}
             />
             <button
               className="add-btn"
@@ -742,24 +808,20 @@ function AppInner() {
           </div>
 
           {showSuggestions && (
-            <div className="autocomplete">
-              {suggestions.map(item => {
+            <div className="autocomplete" role="listbox" id="add-suggestions-listbox" aria-label="Sugestões de itens">
+              {suggestions.map((item, index) => {
                 const cat = getCategoryByKey(item.category);
                 const alreadyOnList = allItemsForDay.some(i => i.id === item.id);
                 const isPostponed = state.postponed[item.id];
                 return (
                   <div
                     key={item.id}
-                    className={`autocomplete-item${isPostponed ? ' postponed' : ''}`}
+                    id={`suggestion-${item.id}`}
+                    className={`autocomplete-item${isPostponed ? ' postponed' : ''}${index === highlightedIndex ? ' highlighted' : ''}`}
                     onClick={() => handleSelectSuggestion(item)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleSelectSuggestion(item);
-                      }
-                    }}
+                    onMouseEnter={() => setHighlightedIndex(index)}
                     role="option"
-                    tabIndex={0}
+                    aria-selected={index === highlightedIndex}
                     aria-label={`${
                       isPostponed
                         ? 'Trazer de volta'
@@ -988,9 +1050,8 @@ function AppInner() {
 
       {/* Logout confirmation modal (AUD-007) */}
       {showLogoutConfirm && (
-        <div className="modal-backdrop" onClick={() => setShowLogoutConfirm(false)}>
-          <div className="ios-modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="ios-modal-title">Sair da conta?</h2>
+        <Modal titleId="logout-modal-title" onClose={() => setShowLogoutConfirm(false)}>
+          <h2 className="ios-modal-title" id="logout-modal-title">Sair da conta?</h2>
             {logoutPendingCount === null ? (
               <p>Verificando pendências...</p>
             ) : logoutPendingCount > 0 ? (
@@ -1021,15 +1082,13 @@ function AppInner() {
             <button className="login-forgot-link" onClick={() => setShowLogoutConfirm(false)}>
               Cancelar
             </button>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Change password modal */}
       {showChangePassword && (
-        <div className="modal-backdrop" onClick={() => setShowChangePassword(false)}>
-          <div className="ios-modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="ios-modal-title">Alterar senha</h2>
+        <Modal titleId="change-password-modal-title" onClose={() => setShowChangePassword(false)}>
+          <h2 className="ios-modal-title" id="change-password-modal-title">Alterar senha</h2>
             <form onSubmit={handleChangePasswordSubmit} className="login-form">
               <input
                 type="password"
@@ -1052,7 +1111,7 @@ function AppInner() {
                 minLength={6}
               />
               {changePasswordStatus === 'error' && (
-                <div className="login-error">
+                <div className="login-error" role="alert">
                   {newPassword.length < 6
                     ? 'A senha precisa ter pelo menos 6 caracteres.'
                     : newPassword !== newPasswordConfirm
@@ -1064,15 +1123,13 @@ function AppInner() {
                 {changePasswordStatus === 'saving' ? 'Salvando...' : 'Salvar senha'}
               </button>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* iOS Installation Modal */}
       {showIosInstallModal && (
-        <div className="modal-backdrop" onClick={() => setShowIosInstallModal(false)}>
-          <div className="ios-modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="ios-modal-title">Instalar no iPhone</h2>
+        <Modal titleId="ios-install-modal-title" onClose={() => setShowIosInstallModal(false)}>
+          <h2 className="ios-modal-title" id="ios-install-modal-title">Instalar no iPhone</h2>
             <div className="ios-modal-steps">
               <div className="ios-modal-step">
                 <span className="ios-modal-step-number">1</span>
@@ -1090,8 +1147,7 @@ function AppInner() {
             <button className="ios-modal-close-btn" onClick={() => setShowIosInstallModal(false)}>
               Entendi
             </button>
-          </div>
-        </div>
+        </Modal>
       )}
 
       <div className={`celebration${celebrationShow ? ' show' : ''}`} role="status" aria-live="polite">{celebration}</div>
