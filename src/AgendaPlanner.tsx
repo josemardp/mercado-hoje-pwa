@@ -135,7 +135,7 @@ export default function AgendaPlanner({
   return (
     <div className="agenda-planner">
       {syncStatus !== 'idle' && (
-        <div className="rotina-sync-indicator">
+        <div className="rotina-sync-indicator" role="status" aria-live="polite">
           {syncStatus === 'syncing' && '🔄 salvando...'}
           {syncStatus === 'synced' && '✅ salvo'}
           {syncStatus === 'error' && '⚠️ erro sync'}
@@ -210,7 +210,7 @@ export default function AgendaPlanner({
           {generating ? 'Montando...' : 'Montar agenda'}
         </button>
 
-        {validationError && <div className="agenda-validation-error">{validationError}</div>}
+        {validationError && <div className="agenda-validation-error" role="alert">{validationError}</div>}
         {shortfallMinutes !== null && shortfallMinutes > 0 && (
           <div className="rotina-stuck-sync-banner" role="alert">
             <span>
@@ -250,6 +250,7 @@ export default function AgendaPlanner({
       ) : tasks.length === 0 ? (
         <div className="rotina-step-count">Nenhuma tarefa ainda — adicione acima.</div>
       ) : (
+        <div className="agenda-table-wrap">
         <table className="agenda-table">
           <thead>
             <tr>
@@ -371,6 +372,7 @@ export default function AgendaPlanner({
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

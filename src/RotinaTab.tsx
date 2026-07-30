@@ -221,7 +221,7 @@ export default function RotinaTab({
               <div className="rotina-greeting">{greetingText()}</div>
               <div className="rotina-date">{dateStr}</div>
               {syncStatus !== 'idle' && (
-                <div className="rotina-sync-indicator">
+                <div className="rotina-sync-indicator" role="status" aria-live="polite">
                   {syncStatus === 'syncing' && '🔄 salvando...'}
                   {syncStatus === 'synced' && '✅ salvo'}
                   {syncStatus === 'error' && '⚠️ erro sync'}
@@ -242,11 +242,37 @@ export default function RotinaTab({
             </button>
           </div>
 
-          <div className="agenda-mode-toggle rotina-mode-toggle">
-            <button className={mode === 'fixa' ? 'active' : ''} onClick={() => setMode('fixa')} aria-pressed={mode === 'fixa'}>
+          <div
+            className="agenda-mode-toggle rotina-mode-toggle"
+            role="tablist"
+            aria-label="Modo da Rotina"
+            onKeyDown={e => {
+              if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+              e.preventDefault();
+              setMode(mode === 'fixa' ? 'agenda' : 'fixa');
+              (e.currentTarget.querySelector(`[aria-selected="false"]`) as HTMLButtonElement | null)?.focus();
+            }}
+          >
+            <button
+              role="tab"
+              id="rotina-mode-tab-fixa"
+              aria-selected={mode === 'fixa'}
+              aria-controls="rotina-mode-panel"
+              tabIndex={mode === 'fixa' ? 0 : -1}
+              className={mode === 'fixa' ? 'active' : ''}
+              onClick={() => setMode('fixa')}
+            >
               Rotina fixa
             </button>
-            <button className={mode === 'agenda' ? 'active' : ''} onClick={() => setMode('agenda')} aria-pressed={mode === 'agenda'}>
+            <button
+              role="tab"
+              id="rotina-mode-tab-agenda"
+              aria-selected={mode === 'agenda'}
+              aria-controls="rotina-mode-panel"
+              tabIndex={mode === 'agenda' ? 0 : -1}
+              className={mode === 'agenda' ? 'active' : ''}
+              onClick={() => setMode('agenda')}
+            >
               Agenda
             </button>
           </div>
@@ -290,6 +316,11 @@ export default function RotinaTab({
           <div className="rotina-progress-label"><b>{doneCount}</b>/{totalCount} passos concluídos</div>
         </header>
 
+        <div
+          id="rotina-mode-panel"
+          role="tabpanel"
+          aria-labelledby={mode === 'agenda' ? 'rotina-mode-tab-agenda' : 'rotina-mode-tab-fixa'}
+        >
         {mode === 'agenda' ? (
           <AgendaPlanner {...agenda} />
         ) : (
@@ -362,6 +393,7 @@ export default function RotinaTab({
         </div>
         </>
         )}
+        </div>
       </div>
     </div>
   );

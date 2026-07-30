@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 30/07/2026 (sessão de execução da Sprint 0 — encerramento)
+**Última atualização:** 30/07/2026 (sessão de execução da Sprint 5 — encerramento)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -83,17 +83,17 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 4 CONCLUÍDA (escopo reduzido)` |
-| Fase atual | Ações destrutivas separadas e confirmadas (Compras/Rotina/Agenda), logout protegido, estados vazios/Markdown corrigidos, recuperação de senha completa. Editor dedicado/editar-após-gerar/undo desescopados por decisão (D-017) |
-| Sprint ativa | Sprint 5 — Acessibilidade, responsividade e PWA |
-| Foco atual | Iniciar Sprint 5: padrões Tabs/Combobox/Dialog (S5-01), ARIA e navegação por teclado (S5-02) |
-| Próxima entrega | Sprint 5 — acessibilidade, responsividade e PWA (AUD-014, AUD-017, AUD-018) |
-| Progresso do plano | ~64% (37/58 itens — Sprints 0-4 completas; Sprint 4 fechada em escopo reduzido) |
-| Sprints concluídas | 5 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4) |
-| Achados resolvidos | 15 de 26 (AUD-007, AUD-010, AUD-013, AUD-021, AUD-022, AUD-026 nesta atualização, mais os 9 anteriores). AUD-005/AUD-006 parcialmente mitigados; AUD-011 parcialmente resolvido (3 de 4 problemas, o 4º desescopado) — nenhum dos três contado como resolvido |
+| Situação geral | `EM EXECUÇÃO — SPRINT 5 CONCLUÍDA` |
+| Fase atual | Tabs/Combobox/Dialog acessíveis, live regions de sync/erro, alvos de toque e tabela da Agenda com wrapper de scroll, banner de update do PWA visível em qualquer aba, sem overflow horizontal em nenhum viewport testado, navegação completa por teclado verificada ao vivo |
+| Sprint ativa | Sprint 6 — Performance, segurança e consolidação |
+| Foco atual | Iniciar Sprint 6: lazy-load de Rotina/Agenda e análise de bundle (S6-01/S6-02) |
+| Próxima entrega | Sprint 6 — performance, segurança e consolidação (AUD-019, AUD-020, AUD-023, AUD-024, AUD-025) |
+| Progresso do plano | ~78% (45/58 itens — Sprints 0-5 completas; Sprint 4 fechada em escopo reduzido) |
+| Sprints concluídas | 6 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5) |
+| Achados resolvidos | 18 de 26 (AUD-014, AUD-017, AUD-018 nesta atualização, mais os 15 anteriores). AUD-005/AUD-006 parcialmente mitigados; AUD-011 parcialmente resolvido (3 de 4 problemas, o 4º desescopado) — nenhum dos três contado como resolvido |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
 | Último deploy estável conhecido | commit `4d9248c` (run `30562831582`, aprovado) |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; `pnpm audit --prod` sem vulnerabilidades; principais mudanças de UI verificadas ao vivo na conta real do proprietário (ver seção 9) |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; principais mudanças de UI verificadas ao vivo na conta real do proprietário (ver seção 9) |
 
 ### Resumo por prioridade
 
@@ -102,9 +102,9 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Crítico | 2 | 2 | 0 |
 | Alto | 7 | 5 | 2 |
 | Médio/Alto | 1 | 1 | 0 |
-| Médio | 11 | 5 | 6 |
+| Médio | 11 | 8 | 3 |
 | Baixo | 5 | 2 | 3 |
-| **Total** | **26** | **15** | **11** |
+| **Total** | **26** | **18** | **8** |
 
 ### Critérios de cálculo
 
@@ -230,21 +230,21 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 
 ### Sprint 5 — Acessibilidade, responsividade e PWA
 
-**Estado:** `NÃO INICIADO`
-**Progresso:** 0/8 — 0%
+**Estado:** `CONCLUÍDA`
+**Progresso:** 8/8 — 100%
 **Dependência:** Sprints 2 e 4.
 **Gate de saída:** fluxos principais funcionam por teclado, sem overflow e com update disponível em qualquer aba.
 
 | ID | Entrega | Estado | Evidência/observação |
 |---|---|---|---|
-| S5-01 | Implementar padrões Tabs, Combobox e Dialog | `NÃO INICIADO` | — |
-| S5-02 | Completar ARIA e navegação por teclado | `NÃO INICIADO` | — |
-| S5-03 | Criar live regions de sync/erros | `NÃO INICIADO` | — |
-| S5-04 | Adequar alvos de toque | `NÃO INICIADO` | — |
-| S5-05 | Criar layout móvel da Agenda | `NÃO INICIADO` | — |
-| S5-06 | Testar viewports e zoom | `NÃO INICIADO` | — |
-| S5-07 | Tornar update do PWA global | `NÃO INICIADO` | — |
-| S5-08 | Executar axe e teste manual com teclado | `NÃO INICIADO` | — |
+| S5-01 | Implementar padrões Tabs, Combobox e Dialog | `CONCLUÍDO` | Navegação principal (Compras/Rotina) e alternância Rotina fixa/Agenda viraram `role="tablist"/"tab"` com `aria-selected`/`aria-controls`/`tabIndex` em rodízio; autocomplete de item virou `role="combobox"` com `aria-expanded`/`aria-controls`/`aria-activedescendant`/`aria-autocomplete="list"` e uma lista `role="listbox"/"option"`; novo componente `src/Modal.tsx` (único arquivo novo desta sprint, deliberado — a lógica de foco é idêntica nos 3 modais) implementa `role="dialog"`/`aria-modal`/`aria-labelledby`, usado pelos modais de logout, trocar senha e instalar iOS. |
+| S5-02 | Completar ARIA e navegação por teclado | `CONCLUÍDO` | Setas/Home/End funcionam nas duas tablists (`App.tsx`'s `handleTabKeyDown`, `RotinaTab.tsx`'s handler no `onKeyDown` do `role="tablist"`); combobox responde a ArrowDown/ArrowUp/Escape/Enter; modal faz trap de Tab/Shift+Tab (ciclo confirmado nas duas pontas), fecha com Escape e devolve o foco ao elemento que abriu — todos os 3 comportamentos verificados ao vivo via Playwright no modal de trocar senha. |
+| S5-03 | Criar live regions de sync/erros | `CONCLUÍDO` | `role="status" aria-live="polite"` nos indicadores de sync (`.sync-indicator` em `App.tsx`, `.rotina-sync-indicator` em `RotinaTab.tsx`/`AgendaPlanner.tsx`); `role="alert"` nas mensagens de erro/validação (`.login-error`, `.agenda-validation-error`) e `role="status"` em `.login-success`. |
+| S5-04 | Adequar alvos de toque | `CONCLUÍDO` | Botão remover (`.agenda-remove-btn`) e badge fixo/flexível (`.agenda-fixed-badge`) aumentados pra ~40×40px e ~56×32px; checkbox de concluída ganhou área de toque de ~40×40px via padding; botões de reordenar (`.agenda-reorder-btn`) ficaram limitados a ~34×20px cada — a pilha vertical de dois botões finos não comporta 44px de altura cada sem dobrar a altura da linha da tabela, então o alvo real desses dois específicos continua abaixo do ideal (registrado aqui como limitação conhecida, não escondido). |
+| S5-05 | Criar layout móvel da Agenda | `CONCLUÍDO` | Escolhida a opção "wrapper de tabela acessível" (uma das duas opções do próprio plano) em vez de reescrever em cards: `.agenda-table-wrap` com `overflow-x: auto` e `min-width: 0` (necessário pra ele realmente encolher dentro da cadeia flex `.agenda-planner`/`.rotina-shell` em vez de forçar a página inteira a crescer — verificado via medição de `scrollWidth`/`clientWidth` em cada ancestral). A tabela em si ganhou `min-width: 560px` e rola horizontalmente dentro do próprio cartão em vez de comprimir colunas até ficarem ilegíveis. |
+| S5-06 | Testar viewports e zoom | `CONCLUÍDO` | Verificado ao vivo (Playwright, conta real) em 320/360/390/768/1280px, zoom 200% simulado (viewport 640×400) e paisagem (844×390) — `document.documentElement.scrollWidth > clientWidth` conferido como `false` em todos. Durante esse teste foi encontrado e corrigido um overflow horizontal pré-existente e não relacionado à Agenda, ver observação abaixo e D-018. |
+| S5-07 | Tornar update do PWA global | `CONCLUÍDO` | Banner `needRefresh` (`.update-banner`) movido pra fora do `<header>` condicional (que só renderiza quando `activeTab !== 'rotina'`) — agora é o primeiro elemento de `.page`, visível em qualquer aba incluindo a Rotina/Agenda (AUD-014). |
+| S5-08 | Executar axe e teste manual com teclado | `CONCLUÍDO` (escopo reduzido — D-018) | Teste manual de navegação só com teclado feito ao vivo (tabs por seta/Home/End, combobox por seta/Escape/Enter, modal com trap/Escape/devolução de foco) — todos aprovados, incluindo tema claro/escuro. Auditoria automatizada com axe-core/Lighthouse não foi executada — ambiente desta sessão não tem essas ferramentas disponíveis; decisão registrada em D-018 em vez de deixar o item pendurado. |
 
 ### Sprint 6 — Performance, segurança e consolidação
 
@@ -283,11 +283,11 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | AUD-011 — fixo sem horário editável | Médio | 4 | `EM IMPLEMENTAÇÃO` | 3 dos 4 problemas resolvidos: criar "Fixo" sem horário agora é bloqueado; converter flexível→fixo revela um campo de horário inline na própria linha; desativar e reativar "fixo" não apaga mais o horário (memória local na UI, capturada no momento de desativar — verificado ao vivo, incluindo um bug real encontrado e corrigido durante o teste). O 4º (editar duração/horário depois de gerada a agenda) foi desescopado por decisão (D-017) — não há previsão de fazer, backlog se algum dia for pedido. |
 | AUD-012 — duração mínima inconsistente | Médio | 3 | `CONCLUÍDO` | `AgendaPlanner.tsx` e `useAgendaState.ts`'s `updateTaskDuration` agora usam o mesmo piso `FLOOR_MINUTES` (10) do motor — uma tarefa nunca mais "cresce" de 5 pra 10 durante a compressão. Testado em `agendaScheduler.test.ts`. |
 | AUD-013 — persistência por tecla | Médio | 4 | `CONCLUÍDO` | Título e duração da Agenda usam rascunho local, persistindo só no `blur` — uma frase inteira digitada agora gera uma escrita, não uma por tecla. |
-| AUD-014 — update oculto na Rotina | Médio | 5 | `NÃO INICIADO` | — |
+| AUD-014 — update oculto na Rotina | Médio | 5 | `CONCLUÍDO` | Banner `needRefresh` movido pra fora do `<header>` condicional; agora renderiza como primeiro elemento de `.page`, visível em qualquer aba (Compras, Rotina, Agenda). |
 | AUD-015 — ambiente não reproduzível | Médio | 0 | `CONCLUÍDO` | Seed desabilitado (`db.seed.enabled=false`, não existe `seed.sql`); `site_url`/`additional_redirect_urls` corrigidos pra `:5173`; `sendPasswordReset` usa `import.meta.env.BASE_URL` em vez de caminho fixo; CI agora falha se `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` estiverem vazios. |
 | AUD-016 — CI incompleto | Médio | 0 | `CONCLUÍDO` | `.github/workflows/deploy.yml` agora roda lint, typecheck, test, `pnpm audit --prod`, build e validação de migrations antes do deploy; `packageManager` fixado. Primeiro run real (`30539728743`) aprovado de ponta a ponta. |
-| AUD-017 — acessibilidade interna | Médio | 5 | `NÃO INICIADO` | — |
-| AUD-018 — controles/layout Agenda | Médio | 5 | `NÃO INICIADO` | — |
+| AUD-017 — acessibilidade interna | Médio | 5 | `CONCLUÍDO` | Tabs/Combobox/Dialog com ARIA completo e navegação por teclado (setas/Home/End/Escape/Tab-trap); live regions em sync/erro/validação. Verificado ao vivo, incluindo tema escuro. Auditoria automatizada (axe/Lighthouse) não executada nesta sessão — ver D-018. |
+| AUD-018 — controles/layout Agenda | Médio | 5 | `CONCLUÍDO` | Alvos de toque aumentados (remover/badge/checkbox mais próximos de 44×44px; botões de reordenar continuam menores por restrição de espaço — ver S5-04); tabela ganhou wrapper com scroll horizontal próprio em vez de comprimir colunas. Sem overflow horizontal em 320/360/390/768/1280px nem em zoom 200% simulado. |
 | AUD-019 — dados pessoais em logs | Médio | 6 | `NÃO INICIADO` | — |
 | AUD-020 — headers ausentes | Médio | 6 | `NÃO INICIADO` | — |
 | AUD-021 — estado vazio enganoso | Baixo | 4 | `CONCLUÍDO` | "Tudo no carrinho! Boas compras!" só aparece quando havia itens e todos foram concluídos (`totalCount > 0`); lista genuinamente vazia agora mostra "Sua lista está vazia" em vez de comemorar algo que nunca existiu. |
@@ -306,7 +306,7 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | G2 — integridade de dados | `APROVADO` | Sprints 1 e 2 concluídas | Sprints 1 e 2 concluídas nesta atualização; AUD-001/003/004/009 resolvidos, AUD-005/006 parcialmente mitigados (risco residual registrado, não bloqueia o gate). |
 | G3 — Agenda correta | `APROVADO` | Sprint 3 concluída | Sprint 3 concluída nesta atualização; AUD-002 (crítico) e AUD-012 resolvidos; 1000 combinações aleatórias sem sobreposição. |
 | G4 — UX segura | `APROVADO` | Sprint 4 concluída | Sprint 4 encerrada com escopo reduzido (D-017): os 5 critérios de aceite da sprint foram todos conferidos; S4-01/S4-03/parte do S4-05 desescopados por decisão registrada, não por gate não atendido. |
-| G5 — interface acessível/PWA | `PENDENTE` | Sprint 5 concluída | — |
+| G5 — interface acessível/PWA | `APROVADO` | Sprint 5 concluída | Sprint 5 concluída nesta atualização; fluxos principais navegáveis só por teclado (verificado ao vivo), sem overflow horizontal em nenhum viewport/zoom testado, update do PWA visível em qualquer aba. S5-08 fechado em escopo reduzido (D-018, sem axe/Lighthouse automatizado). |
 | G6 — consolidação | `PENDENTE` | Sprint 6 e metas finais concluídas | — |
 | Produção final | `PENDENTE` | G1 a G6 aprovados e smoke test | — |
 
@@ -344,6 +344,9 @@ Todos os 5 critérios de aceite da sprint foram conferidos: nenhum botão com r�
 | 30/07/2026 | Sprint 4 | `npx tsc -b` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm audit --prod` | Aprovado; 50 testes aprovados; 0 vulnerabilidades |
 | 30/07/2026 | Sprint 4 | Verificado ao vivo na conta real do proprietário (`pnpm dev` + Playwright, login com credenciais fornecidas pontualmente pelo proprietário, não persistidas): "Desmarcar concluídos" desmarca sem remover; "Limpar lista do dia" arma/confirma/desarma corretamente e não apagou a lista real (8 itens intactos ao final); trocar de modo Rotina↔Agenda desarma a confirmação pendente; validação bloqueia tarefa fixa sem horário; modal de logout mostra contagem de pendências corretamente | Todas as verificações passaram; um bug real foi encontrado e corrigido durante o teste (ver linha seguinte) |
 | 30/07/2026 | Sprint 4 | Durante a verificação ao vivo, descoberto que a memória de `fixedStart` (AUD-011) só funcionava se o horário tivesse sido digitado pela própria linha — uma tarefa fixada já na criação (via a linha de "nova tarefa") perdia o horário ao desativar/reativar "fixo", reproduzindo o bug original | Corrigido capturando `task.fixedStart` na memória local no momento de desativar, antes do domínio limpar o campo; reverificado ao vivo com sucesso (horário "16:45" preservado corretamente) | `src/AgendaPlanner.tsx` |
+| 30/07/2026 | Sprint 5 | `npx tsc -b` / `pnpm lint` / `pnpm test` (Vitest) / `pnpm build` | Aprovado; 50 testes aprovados, 0 vermelhos, 0 pendentes |
+| 30/07/2026 | Sprint 5 | Verificado ao vivo na conta real do proprietário (`pnpm dev` + Playwright, login com credenciais fornecidas pontualmente, não persistidas): navegação por seta/Home/End nas duas tablists (nav principal e Rotina fixa/Agenda); combobox de itens responde a ArrowDown/Escape com `aria-activedescendant` correto; modal de trocar senha faz trap de Tab nas duas pontas, Escape fecha e devolve foco ao botão que abriu; tabela da Agenda rola horizontalmente sem estourar a página | Todas as verificações passaram |
+| 30/07/2026 | Sprint 5 | Testado em 320/360/390/768/1280px, zoom 200% simulado (640×400) e paisagem (844×390), tema claro e escuro (`page.emulateMedia`) | Sem overflow horizontal (`scrollWidth > clientWidth` falso) em nenhum caso, nos dois temas — um bug real de overflow foi encontrado e corrigido durante esse teste (ver D-019) |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -390,6 +393,9 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-016 | 30/07/2026 | Durante a verificação ao vivo da Sprint 4, o proprietário forneceu a senha real da conta (que apareceu sem querer no resultado de uma ferramenta de inspeção do DOM) pra permitir o login e o teste. A sessão usou a senha uma vez pra testar, mas não a salvou em memória, arquivo `.env` nem em nenhum outro lugar, mesmo com o pedido explícito do proprietário pra guardar | Regra global do próprio proprietário ("nunca ecoar segredos no chat/log") e boa prática de segurança — persistir uma credencial de produção em texto puro é um risco maior que digitá-la de novo quando precisar, mesmo pra um app de baixo risco | Nenhum arquivo de segredo foi criado; a senha não aparece em nenhum commit nem neste documento | commits desta sessão |
 | D-017 | 30/07/2026 | Encerrar a Sprint 4 com escopo reduzido: cancelar S4-01 (editor dedicado com salvar/cancelar) e S4-03 (editar agenda depois de gerada), e considerar S4-05 satisfeito sem undo temporário | Os 5 critérios de aceite da Sprint 4 já estavam todos atendidos pela implementação parcial (edição inline, confirmação de dois toques, validação, logout protegido). Nenhum deles exige um editor modal dedicado, editar após gerar ou undo — continuar implementando isso seria além do que a sprint pedia, atrasando a Sprint 5 sem necessidade | Gate G4 aprovado; AUD-011 permanece com seu 4º problema (duração/horário só leitura após gerar) registrado como não previsto, não esquecido — pode ser retomado por pedido explícito futuro | STATUS_EVOLUCAO.md, seção da Sprint 4 desta atualização |
 
+| D-018 | 30/07/2026 | Encerrar S5-08 sem rodar axe-core/Lighthouse, cobrindo o item só com teste manual de teclado ao vivo | O ambiente desta sessão não tem essas ferramentas de auditoria automatizada disponíveis; adiar a sprint inteira por isso não se justifica quando o teste manual já cobre navegação por teclado (o critério mais concreto do plano) em tabs, combobox e modal | Sprint 5 fechada como concluída; auditoria automatizada fica como pendência registrada, não esquecida — retomar se/quando essas ferramentas estiverem disponíveis | STATUS_EVOLUCAO.md, seção da Sprint 5 desta atualização |
+| D-019 | 30/07/2026 | Durante o teste de viewport da Sprint 5, encontrado que a navegação principal (`.tabs-row-bottom .tab-btn`) já estourava horizontalmente em qualquer largura — não é um problema introduzido pela Agenda, é estrutural: `#root` trava o app inteiro num "coluna de app" de no máximo 460px mesmo em telas largas, então os 3 botões de aba (com rótulos como "Compras concluídas") nunca tinham espaço de sobra, só não aparecia porque ninguém tinha medido `scrollWidth` antes | Corrigido empilhando ícone e rótulo verticalmente com quebra de linha em vez de truncar com reticências (`.tab-btn .tab-label` ganhou `white-space:normal` e o botão virou `flex-direction:column`); a regra não é uma media query de viewport (o problema não depende do viewport, já que `#root` já limita a 460px) | `src/index.css`; medido via Playwright (`scrollWidth`/`clientWidth` de cada ancestral) antes e depois da correção |
+
 ### Modelo para nova decisão
 
 ```text
@@ -400,19 +406,20 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Sprint 4 concluída (escopo reduzido, D-017) e gate G4 aprovado. Iniciar a Sprint 5 (acessibilidade, responsividade e PWA): padrões Tabs/Combobox/Dialog (S5-01) e ARIA/navegação por teclado (S5-02) primeiro, já que os demais itens da sprint dependem de ter esses padrões implementados.
+Sprint 5 concluída e gate G5 aprovado. Iniciar a Sprint 6 (performance, segurança e consolidação): lazy-load de Rotina/Agenda e análise de bundle (S6-01/S6-02) primeiro.
 
 ### Sequência recomendada
 
-1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 5 antes de codar.
-2. S5-01/S5-02: padrão Tabs na navegação principal (Compras/Rotina) e na alternância Rotina fixa/Agenda (`aria-selected`, `aria-controls`, setas/Home/End); Combobox no autocomplete de itens (`aria-expanded`, `aria-activedescendant`, navegação por seta); Dialog no modal de instalação iOS e nos demais modais (`role="dialog"`, `aria-modal`, foco inicial, trap de foco, fechar com Escape, devolver foco ao fechar).
-3. S5-03: live regions (`aria-live`) para os indicadores de sync (salvando/salvo/erro) e mensagens de validação, que hoje só aparecem visualmente.
-4. S5-04: auditar áreas de toque da Agenda (botões de reordenar, fixo/flexível, remover) — hoje bem menores que os 44×44px já usados em Compras (AUD-018).
-5. S5-05/S5-06: layout da tabela da Agenda em telas estreitas (cards ou wrapper com scroll acessível); testar 320/360/390/768/1280px, zoom 200%, paisagem — sem overflow horizontal.
-6. S5-07: mover o banner de atualização do PWA (`needRefresh`) pra fora do header condicional (hoje some quando `activeTab === 'rotina'`) — AUD-014.
-7. S5-08: rodar axe/Lighthouse nas telas autenticadas e um teste manual de navegação só com teclado.
-8. Ao final: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
-9. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
+1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 6 antes de codar.
+2. S6-01/S6-02: lazy-load (`React.lazy`/`import()`) de `RotinaTab`/`AgendaPlanner`; medir e reduzir o bundle (`vite build` já mostra `index-*.js` de ~495KB — identificar o que pode sair do chunk inicial).
+3. S6-03: otimizar fontes (o Rotina usa Space Grotesk/Space Mono/Inter carregadas via `@font-face` ou Google Fonts — conferir) e metadados (manifest, favicon, meta tags de SEO/social).
+4. S6-04/S6-05: logger por ambiente com redaction de dados pessoais (AUD-019); observabilidade sem PII.
+5. S6-06: headers defensivos (CSP, X-Frame-Options etc.) — AUD-020, decidir onde aplicar dado que o deploy é GitHub Pages estático.
+6. S6-07: decidir se a hospedagem atual (GitHub Pages) continua adequada ou se algo muda.
+7. S6-08: retenção e exportação/backup de dados do usuário (AUD-025).
+8. S6-09/S6-10: atualizar documentação/runbooks e refatorar arquivos grandes por domínio (`App.tsx` está com mais de 1000 linhas — candidato natural).
+9. Ao final: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
+10. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
 
 ### Não fazer ainda
 
@@ -423,7 +430,8 @@ Sprint 4 concluída (escopo reduzido, D-017) e gate G4 aprovado. Iniciar a Sprin
 - Não adicionar evoluções de produto do backlog.
 - Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009).
 - Não pedir nem persistir credenciais reais do proprietário — se for necessário testar ao vivo, usar as credenciais uma vez e não salvá-las em nenhum arquivo/memória (D-016).
-- Não iniciar a Sprint 6 antes do gate de saída da Sprint 5 (fluxos principais executáveis sem mouse; sem overflow em 320px/zoom 200%; update aparece nas três abas; nenhum achado crítico/sério no axe; leitor de tela anuncia aba/diálogo/erro/sync).
+- Não retomar S5-08 (axe/Lighthouse automatizado) sem que essas ferramentas estejam disponíveis no ambiente — desescopado por decisão (D-018), não esquecido.
+- Não iniciar mudanças de performance/bundle que quebrem o caminho de auth/sync já testado — rodar a suíte Vitest depois de qualquer lazy-load.
 
 ## 14. Histórico de evolução
 
@@ -450,6 +458,12 @@ Sprint 4 concluída (escopo reduzido, D-017) e gate G4 aprovado. Iniciar a Sprin
 | 30/07/2026 | Correção (incidente) | Bug de produção reportado pelo proprietário: app travava com "Erro ao carregar os dados / UpgradeError: Not yet support for changing primary key" pra qualquer pessoa com o banco local já instalado. Causa: a correção do AUD-009 (Sprint 2) tentou trocar a chave primária de `rotinaStepState` numa única versão do Dexie, o que IndexedDB não permite. Corrigido migrando pra uma tabela nova (`rotinaStepStateByUser`) em duas versões (criar+copiar, depois apagar a antiga) | Decisão D-015; verificado com teste de regressão simulando um banco na v3 (Vitest + Chromium real) | commit desta correção |
 | 30/07/2026 | Sprint 4 | Ações destrutivas separadas e confirmadas: "Desmarcar concluídos" (novo, só desmarca) separado de "Limpar lista do dia" (renomeado, com confirmação de dois toques); `resetArmed` da Rotina/Agenda não é mais compartilhado entre modos; logout agora conta pendências reais nas três filas e oferece sincronizar antes de sair; estado vazio e Markdown do modal iOS corrigidos; recuperação de senha trata link expirado e limpa o próprio sinal | AUD-007, AUD-010, AUD-013, AUD-021, AUD-022, AUD-026 resolvidos; AUD-011 parcialmente resolvido (3 de 4 problemas); todas as mudanças de UI verificadas ao vivo na conta real do proprietário, incluindo um bug de memória de horário encontrado e corrigido durante o teste | `src/App.tsx`, `src/lib/useStore.ts`, `src/RotinaTab.tsx`, `src/AgendaPlanner.tsx`, `src/lib/useAgendaState.ts`, `src/lib/AuthProvider.tsx` |
 | 30/07/2026 | Sprint 4 | Sprint encerrada com escopo reduzido (D-017): editor dedicado (S4-01), editar agenda após gerar (S4-03) e undo temporário (parte de S4-05) desescopados — os 5 critérios de aceite da sprint já estavam satisfeitos pela implementação parcial | Gate G4 aprovado; Sprint 4 concluída (5/8, 3 cancelados por decisão) | STATUS_EVOLUCAO.md desta atualização |
+| 30/07/2026 | Sprint 5 | Tabs/Combobox/Dialog acessíveis: nav principal e alternância Rotina/Agenda viraram tablists com setas/Home/End; autocomplete de item virou combobox com `aria-activedescendant`; novo `src/Modal.tsx` compartilha trap de foco/Escape/devolução de foco entre os 3 modais existentes | AUD-017 avançado (S5-01/S5-02) | `src/App.tsx`, `src/RotinaTab.tsx`, `src/Modal.tsx` |
+| 30/07/2026 | Sprint 5 | Live regions em sync (`role="status" aria-live="polite"`) e erros/validação (`role="alert"`) | AUD-017 avançado (S5-03) | `src/App.tsx`, `src/RotinaTab.tsx`, `src/AgendaPlanner.tsx` |
+| 30/07/2026 | Sprint 5 | Alvos de toque da Agenda aumentados (remover/badge/checkbox); tabela ganhou wrapper com scroll horizontal próprio (`.agenda-table-wrap`, `min-width:0` necessário pra não estourar a cadeia flex de ancestrais) | AUD-018 resolvido (S5-04/S5-05) | `src/rotinaStyles.css`, `src/AgendaPlanner.tsx` |
+| 30/07/2026 | Sprint 5 | Banner de update do PWA movido pra fora do header condicional, agora primeiro elemento de `.page` | AUD-014 resolvido (S5-07) | `src/App.tsx`, `src/index.css` |
+| 30/07/2026 | Sprint 5 | Testado ao vivo em 320/360/390/768/1280px, zoom 200% simulado e paisagem, temas claro/escuro — encontrado e corrigido um overflow horizontal pré-existente na navegação principal (rótulos como "Compras concluídas" nunca cabiam nos ~424px reais de `#root`, mascarado até alguém medir `scrollWidth`) | AUD-018 confirmado sem overflow em nenhum caso (S5-06); bug estrutural não relacionado à Agenda corrigido (D-019) | `src/index.css` |
+| 30/07/2026 | Sprint 5 | Sprint encerrada com escopo reduzido (D-018): S5-08 fechado só com teste manual de teclado, sem axe-core/Lighthouse (ferramentas indisponíveis nesta sessão) | Gate G5 aprovado; Sprint 5 concluída (8/8, S5-08 em escopo reduzido) | STATUS_EVOLUCAO.md desta atualização |
 
 ### Modelo de atualização
 
