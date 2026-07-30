@@ -40,9 +40,9 @@ describe('AUD-004 — escrita rejeitada por LWW (applied=false) reconcilia com o
     });
 
     expect(ok).toBe(true);
-    const local = await db.rotinaStepState.get(['2026-07-30', 'xixi', 'user-1']);
+    const local = await db.rotinaStepStateByUser.get(['2026-07-30', 'xixi', 'user-1']);
     expect(local?.done).toBe(false); // valor canônico do servidor, não o `true` que tentamos empurrar
-    await db.rotinaStepState.delete(['2026-07-30', 'xixi', 'user-1']);
+    await db.rotinaStepStateByUser.delete(['2026-07-30', 'xixi', 'user-1']);
   });
 
   it('Agenda: syncAgendaTaskToSupabase busca e grava a linha canônica quando a RPC rejeita por ser mais antiga', async () => {

@@ -140,7 +140,7 @@ class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
   dayItems!: Table<DayItemRecord, [string, string]>; // compound key [dayKey, itemId]
   syncQueue!: Table<SyncQueueEntry, number>;
-  rotinaStepState!: Table<RotinaStepStateRecord, [string, string, string]>; // compound key [dayKey, stepId, userId]
+  rotinaStepStateByUser!: Table<RotinaStepStateRecord, [string, string, string]>; // compound key [dayKey, stepId, userId]
   rotinaSyncQueue!: Table<RotinaSyncQueueEntry, number>;
   agendaTasks!: Table<AgendaTaskRecord, string>;
   agendaSyncQueue!: Table<AgendaSyncQueueEntry, number>;
@@ -168,18 +168,26 @@ class MercadoDatabase extends Dexie {
     // userId, so two accounts on the same browser collided on the same row
     // for the same day+step (step slugs are fixed/shared across every
     // account). userId also added to every sync queue, for the same reason.
+    //
+    // IMPORTANT: IndexedDB (and therefore Dexie) does not support changing
+    // an existing store's primary key in place — a version that tries
+    // throws "UpgradeError: Not yet support for changing primary key" and
+    // permanently breaks the local database for anyone who already had an
+    // earlier version installed (this shipped broken once; see D-015).
+    // The fix: leave the old rotinaStepState store's key untouched, add a
+    // NEW store with the new key, copy the data across, then drop the old
+    // store in a LATER version once the copy is safely done.
     this.version(6).stores({
       syncQueue: '++id, type, dayKey, timestamp, userId',
-      rotinaStepState: '[dayKey+stepId+userId], dayKey, stepId, done, updatedAt, userId',
+      rotinaStepStateByUser: '[dayKey+stepId+userId], dayKey, stepId, done, updatedAt, userId',
       rotinaSyncQueue: '++id, type, dayKey, timestamp, userId',
       agendaSyncQueue: '++id, type, taskId, timestamp, userId',
     }).upgrade(async tx => {
-      // Re-key existing rotinaStepState rows under the new compound key —
-      // every row already carries its own userId field, nothing about the
-      // data itself changes, only the key that indexes it.
       const rows = await tx.table('rotinaStepState').toArray();
-      await tx.table('rotinaStepState').clear();
-      await tx.table('rotinaStepState').bulkAdd(rows);
+      await tx.table('rotinaStepStateByUser').bulkAdd(rows);
+    });
+    this.version(7).stores({
+      rotinaStepState: null, // drop the old store now that its data lives in rotinaStepStateByUser
     });
   }
 }
