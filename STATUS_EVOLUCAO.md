@@ -92,7 +92,7 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Sprints concluídas | 4 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3); Sprint 4 em andamento |
 | Achados resolvidos | 15 de 26 (+ AUD-007, AUD-010, AUD-013, AUD-021, AUD-022, AUD-026 nesta atualização). AUD-005/AUD-006 parcialmente mitigados; AUD-011 parcialmente resolvido (3 de 4 problemas) — nenhum dos dois contado como resolvido |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `db2782d` (run `30550014403`, aprovado) — Sprint 4 ainda não teve seu próprio run confirmado nesta atualização |
+| Último deploy estável conhecido | commit `4d9248c` (run `30562831582`, aprovado) |
 | Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; `pnpm audit --prod` sem vulnerabilidades; principais mudanças de UI verificadas ao vivo na conta real do proprietário (ver seção 9) |
 
 ### Resumo por prioridade
