@@ -6,10 +6,10 @@ import type { ManifestOptions } from 'vite-plugin-pwa'
 
 const manifest: Partial<ManifestOptions> = {
   id: '/mercado-hoje-pwa/',
-  name: 'Mercado de Hoje',
-  short_name: 'Mercado',
+  name: 'Meu Diário',
+  short_name: 'Meu Diário',
   lang: 'pt-BR',
-  description: 'Lista de compras inteligente para o seu dia a dia',
+  description: 'Compras, rotina e agenda do seu dia a dia',
   orientation: 'portrait',
   categories: ['shopping', 'utilities'],
   start_url: '/mercado-hoje-pwa/',
