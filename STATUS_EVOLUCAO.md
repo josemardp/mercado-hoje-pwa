@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 30/07/2026 (sessão de execução da Sprint 6 — encerramento; todas as 7 sprints do plano concluídas)
+**Última atualização:** 30/07/2026 (sessão de planejamento dos 4 achados residuais — nenhum código ainda alterado, só o plano)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -83,11 +83,11 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 6 CONCLUÍDA (escopo reduzido) — todas as 7 sprints do plano encerradas` |
-| Fase atual | Lazy-load da Rotina/Agenda, Tailwind removido (não usado), CSP via meta tag testada sem violações, logger sanitizado + observabilidade, exportação de dados, README reescrito. Divisão de arquivos grandes (S6-10) desescopada por decisão (D-022) |
-| Sprint ativa | Nenhuma — plano de 7 sprints encerrado. Resta fechar os achados residuais (AUD-005/006/011/024, parciais) antes de declarar "evolução concluída" pelo critério da seção 15 |
-| Foco atual | Decidir com o proprietário: aceitar os residuais parciais como risco permanente (fechando por decisão, como já feito com D-009/D-011/D-014/D-017) ou agendar uma sessão dedicada pra cada um |
-| Próxima entrega | Nenhuma sprint nova prevista — plano `PLANO_EVOLUCAO_IMPLEMENTACAO.md` cumprido; próximos passos são os residuais acima ou o backlog de evolução (seção 5 do plano) |
+| Situação geral | `EM EXECUÇÃO — PLANO DOS 4 RESIDUAIS APROVADO, NENHUM AINDA IMPLEMENTADO` |
+| Fase atual | As 7 sprints do plano original estão encerradas (ver histórico). Sessão atual: Josemar pediu plano completo pra fechar os 4 achados residuais (AUD-005/006/011/024); plano pesquisado, desenhado e **aprovado por ele** nesta sessão — ver seção 13 pro plano completo. Nenhuma linha de código foi alterada ainda, só pesquisa e planejamento |
+| Sprint ativa | Nenhuma — plano de 7 sprints encerrado. Trabalho atual é fechar os 4 residuais, plano já aprovado, execução prevista pra uma próxima sessão |
+| Foco atual | Implementar o plano da seção 13, na ordem: (1) AUD-011 pequeno/seguro, (2) AUD-006 Realtime, (3) AUD-005 clamp de relógio, (4) AUD-024 divisão de arquivos (incremental, várias sub-sessões) |
+| Próxima entrega | Nenhuma sprint nova — os próximos passos são os 4 residuais (plano completo na seção 13) |
 | Progresso do plano | ~93% (54/58 itens — todas as 7 sprints completas; Sprint 4 e Sprint 6 fechadas em escopo reduzido por decisão) |
 | Sprints concluídas | 7 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4, Sprint 5, Sprint 6) |
 | Achados resolvidos | 22 de 26 (AUD-019, AUD-020, AUD-023, AUD-025 nesta atualização, mais os 18 anteriores). Residuais parciais: AUD-005/AUD-006 (mitigados, não fechados), AUD-011 (3 de 4 problemas, o 4º desescopado), AUD-024 (documentação concluída, divisão de arquivos desescopada) |
@@ -416,30 +416,88 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-As 7 sprints do plano (`PLANO_EVOLUCAO_IMPLEMENTACAO.md`) estão encerradas — Sprint 6 concluída nesta atualização com escopo reduzido (D-023), gate G6 aprovado. Não há mais uma "próxima sprint" no caminho crítico original. O que resta antes de declarar "EVOLUÇÃO CONCLUÍDA" pelo critério da seção 15 é decidir o destino dos achados residuais parciais — nenhum é um bug ativo, todos já têm mitigação registrada, mas nenhum foi formalmente fechado por decisão.
+As 7 sprints do plano original (`PLANO_EVOLUCAO_IMPLEMENTACAO.md`) estão encerradas. Nesta sessão, Josemar pediu um plano completo pra fechar os 4 achados residuais parciais (AUD-005/006/011/024) — o plano foi pesquisado a fundo (arquitetura de sync, RPCs, estrutura dos arquivos grandes) e **aprovado por ele**, mas **nenhuma linha de código foi alterada ainda** — só pesquisa e planejamento. A próxima sessão deve **implementar o plano abaixo**, um item de cada vez, na ordem dada.
 
-### Sequência recomendada
+**Decisão já tomada com o proprietário nesta sessão**: implementar Realtime de verdade pro AUD-006 (ele confirmou que o custo do Supabase Realtime é irrelevante pro uso pessoal dele — não é "aceitar residual", é pra construir).
 
-1. Revisar com o proprietário os 4 achados ainda parciais e decidir, um a um, se cada um vira uma decisão de "aceitar residual" (fechando o achado, como já foi feito com D-009/D-011/D-014) ou uma sessão dedicada:
-   - **AUD-005** (LWW pelo relógio local): falta migrar o versionamento de escrita campo-a-campo pra timestamp do servidor. Escopo grande — provavelmente justifica uma sessão própria se for pra fechar de verdade.
-   - **AUD-006** (sem Realtime): decisão D-011 já resolveu não prototipar por falta de justificativa de custo/benefício — só falta formalizar que isso fecha o achado ou continua em aberto por tempo indefinido.
-   - **AUD-011** (4º problema: editar duração/horário depois de gerada a agenda): pequeno, poderia ser retomado numa sessão curta se o proprietário quiser.
-   - **AUD-024** (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio, S6-10 cancelado por D-022): candidato mais claro pra uma sessão dedicada, com testes por extração.
-2. Se o proprietário preferir seguir pro backlog de evolução (seção 5 do plano — histórico/revisão diária, rotinas personalizáveis, lembretes, backup/portabilidade avançado, planejado×realizado) em vez de fechar os residuais primeiro, isso é uma escolha válida — só registrar a decisão aqui antes de começar.
-3. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto, sem urgência.
-4. Qualquer trabalho novo: rodar lint/typecheck/test/build ao final, atualizar este status, commit e push na main.
+### Plano completo (copiado do arquivo de planejamento local, que NÃO sincroniza entre máquinas — esta cópia aqui é a fonte de verdade entre sessões/PCs)
+
+#### 1. AUD-011 — editar duração/horário depois de gerada a agenda (pequeno, baixo risco — fazer primeiro)
+
+Problema real: depois de "Montar agenda", as células de Horário/Duração da tabela (`src/AgendaPlanner.tsx:271-303`) viram texto puro — não há nem um `input disabled`, é um ramo JSX totalmente diferente (`isScheduled ? <texto> : <input>`). Pra corrigir uma tarefa hoje é preciso "Limpar agenda" e recriar tudo.
+
+Por que é seguro: o motor (`src/lib/agendaScheduler.ts`) já suporta regenerar preservando tarefas `done` intocadas (teste `leaves done tasks untouched on regeneration`, `agendaScheduler.test.ts:91-100`) e as funções `updateFixedStart`/`updateTaskDuration` (`useAgendaState.ts:301,311`) já funcionam corretamente contra uma tarefa já agendada — só não têm nenhum controle de UI que as chame hoje.
+
+Mudança: em `src/AgendaPlanner.tsx`, trocar os dois ternários que escondem o `input` quando `isScheduled` é `true` — sempre renderizar o input, pré-preenchido a partir do valor atual (`scheduledStart`/duração calculada de `scheduledEnd - scheduledStart` quando agendado; `fixedStart`/`estimatedMinutes` quando não). Reaproveitar os drafts já existentes (`fixedStartDrafts`/`durationDrafts`). Adicionar um indicador (ex.: reabilitar "Montar agenda" com rótulo "Recalcular agenda") pra deixar claro que a edição só reflete na tabela depois de chamar `generateSchedule` de novo (já é barato, `done` passa direto). Reordenar continua fora de escopo (`hasScheduleAny` não muda).
+
+Teste: novo caso em `agendaScheduler.test.ts` confirmando que editar `estimatedMinutes`/`fixedStart` de uma tarefa já agendada e regenerar reflete o novo valor. Complementar com teste manual ao vivo (Playwright, conta real).
+
+Arquivos: `src/AgendaPlanner.tsx`, `src/lib/__tests__/agendaScheduler.test.ts`.
+
+#### 2. AUD-006 — Realtime (médio, decisão já tomada de implementar)
+
+Objetivo: sincronização instantânea via Supabase Realtime, **aditiva** — o sync por foco/visibilidade (throttle 30s) e a fila offline continuam existindo como rede de segurança, Realtime só antecipa quando os dois aparelhos estão online ao mesmo tempo.
+
+Migration nova (`supabase/migrations/20260803_enable_realtime.sql`): `ALTER PUBLICATION supabase_realtime ADD TABLE mh_day_items;` (+ `mh_rotina_state`, `mh_agenda_tasks`). Não incluir `mh_items` (catálogo) nesta fase. RLS já habilitada nessas tabelas é respeitada pelo Realtime por padrão.
+
+Um canal por hook (`useStore.ts`/`useRotinaState.ts`/`useAgendaState.ts`, cada um no seu domínio): `supabase.channel('day-items-'+user.id).on('postgres_changes', {event:'*', schema:'public', table:'mh_day_items', filter:'user_id=eq.'+user.id}, handler).subscribe()`, com `removeChannel` no cleanup do efeito. O handler mapeia `payload.new` (snake_case) pro shape TS (reaproveitar o mapeamento já existente em `loadDayStateFromSupabase`/etc.), chama a mesma `mergeXWithLWW` já usada no pull normal (array de 1 item) e faz `db.<table>.put()` + atualiza estado React — mesmo padrão que `reconcileLocalItemFromRemote`/etc. já demonstram.
+
+Reconexão: em `CHANNEL_ERROR`/`TIMED_OUT`, disparar um pull+merge completo daquele domínio como rede de segurança.
+
+Feedback: nenhum novo — silencioso, é atualização de fundo. Não mexer no `syncStatus` existente.
+
+Teste: manual ao vivo com dois contextos de navegador (mesma conta) — marcar um item num, confirmar que aparece no outro em segundos sem trocar de aba.
+
+Arquivos: nova migration; `db.ts`/`rotinaDb.ts`/`agendaDb.ts` (handler de payload); `useStore.ts`/`useRotinaState.ts`/`useAgendaState.ts` (novo efeito de subscribe/unsubscribe).
+
+#### 3. AUD-005 — LWW pelo relógio local (médio/grande, risco de dado — cuidado)
+
+**A solução ingênua está errada**: fazer o servidor sempre gravar `updated_at = clock_timestamp()` (ignorando o cliente) quebraria o caso central do app — um aparelho offline por horas, sincronizando depois, teria `updated_at` carimbado na hora de CHEGADA, não da edição real, podendo fazer uma edição antiga vencer incorretamente uma mais nova de outro aparelho.
+
+**Fix recomendado — grampo (clamp), não substituição**: dentro das 4 RPCs condicionais (`upsert_day_item_if_newer`, `upsert_rotina_step_if_newer`, `upsert_agenda_task_if_newer`, `update_item_category_if_newer`/`upsert_item_reconcile_name`), limitar `p_updated_at` pra nunca ser aceito mais de N minutos no futuro do relógio do próprio Postgres: `v_effective_updated_at := LEAST(p_updated_at, clock_timestamp() + INTERVAL '5 minutes')`, usado em toda comparação/gravação da função no lugar de `p_updated_at` puro. Isso resolve o problema real (relógio adiantado não vence mais todo conflito futuro) sem quebrar edição offline legítima (sempre no passado, nunca afetada pelo grampo).
+
+Detalhes: tolerância de 5min é um chute ajustável; nas RPCs com guard de cutoff (`IF v_cutoff IS NOT NULL AND p_updated_at < v_cutoff THEN RETURN FALSE`), aplicar o grampo ANTES dessa comparação; não precisa devolver o timestamp grampado pro cliente (o próximo pull+merge já traz o valor real do Postgres) — **nenhuma mudança de código cliente necessária**, só a migration SQL.
+
+Migration nova: `supabase/migrations/20260804_clamp_client_clock_skew.sql`, `CREATE OR REPLACE FUNCTION` nas 4 funções.
+
+Teste: chamar a RPC com `p_updated_at` = "daqui a 1 ano", confirmar que fica grampado a `~clock_timestamp() + 5min`.
+
+Arquivos: só a migration SQL.
+
+#### 4. AUD-024 — dividir arquivos grandes por domínio (maior risco — sessão incremental, uma extração por vez, conforme D-022)
+
+Precedente já funcionando no repo: `RotinaTab.tsx`/`AgendaPlanner.tsx` (recebem o retorno do hook como props, não chamam o hook de novo) e `rotinaDb.ts`/`agendaDb.ts` (lógica de sync separada do schema central em `db.ts`). Compras deve seguir o mesmo molde.
+
+Ordem (cada passo = 1 commit + 1 rodada de testes, revisar antes de seguir):
+1. `db.ts` → extrair `comprasDb.ts` (mirror de `rotinaDb.ts`/`agendaDb.ts`): mover `initializeDefaultItems`, `loadDayStateFromSupabase`, `mergeDayItemsWithLWW`, `reconcileLocalItemFromRemote`, `syncDayItemToSupabase`, `remapItemId`, `compactSyncQueueEntries`, `processSyncQueue`, `syncCategoryToSupabase`, `atomicIncrementUseCount` (~500 linhas). Tipos ficam em `db.ts`. Atualizar imports em `useStore.ts`, `App.tsx`, `dexie.test.ts`, `syncReconciliation.test.ts`, `lwwMerges.test.ts`.
+2. `useStore.ts` → dividir em `useDayState.ts` + `useItems.ts` (já existe costura limpa, as duas funções não compartilham state entre si). Nomes de export idênticos.
+3. `App.tsx` → extrair `LoginScreen.tsx` (tela de login + seu estado local `email`/`password`/`showPassword`/`forgotMode`/`authError`/`resetSent` são um bloco disjunto do resto — só precisa `signInWithPassword`/`sendPasswordReset`/`authLinkError`/`passwordRecovery` como props).
+4. (Opcional, avaliar depois) `App.tsx` → extrair `ComprasTab.tsx` (as 3 abas de Compras + combobox de adicionar item), mesmo molde de props do `RotinaTab`.
+
+Cada passo: `npx tsc -b && pnpm lint && pnpm test && pnpm build` antes de seguir; testar ao vivo as telas afetadas por aquele passo específico.
+
+Arquivos: `db.ts`→`comprasDb.ts` (novo), `useStore.ts`→`useDayState.ts`+`useItems.ts` (novos, useStore.ts removido), `App.tsx`→`LoginScreen.tsx` (novo) + opcionalmente `ComprasTab.tsx` (novo).
+
+### Ordem de execução recomendada
+
+1. AUD-011 (pequeno, 1 sessão curta)
+2. AUD-006 Realtime (médio, 1 sessão)
+3. AUD-005 clamp (médio, SQL só — testar com cuidado antes de aplicar em produção)
+4. AUD-024 (maior, várias sub-sessões, uma extração por vez)
+
+Cada item fecha com: `npx tsc -b && pnpm lint && pnpm test && pnpm build`, teste ao vivo do que for aplicável, atualizar este status (achado + decisão, se houver) e commit+push na main — mesmo ritual das 6 sprints anteriores.
 
 ### Não fazer ainda
 
 - Não alterar RPCs de produção além do que for exigido, com migration versionada.
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
-- Não revisitar a decisão de não prototipar Realtime (D-011) sem um motivo concreto novo.
+- Não implementar o Realtime (item 2) substituindo o sync por foco/fila offline — é aditivo, não troca nada existente.
+- Não usar `clock_timestamp()` puro no lugar de `updated_at` do cliente pro AUD-005 (item 3) — isso quebraria edição offline; usar o grampo (`LEAST`), não substituição.
 - Não retomar S4-01/S4-03 (editor dedicado, editar após gerar) sem pedido explícito do proprietário — foram desescopados por decisão (D-017), não esquecidos.
-- Não adicionar evoluções de produto do backlog sem decidir antes o destino dos achados residuais (seção acima).
-- Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009).
+- Não adicionar evoluções de produto do backlog (seção 5 do plano) antes de terminar os 4 residuais, salvo pedido explícito do proprietário.
 - Não pedir nem persistir credenciais reais do proprietário — se for necessário testar ao vivo, usar as credenciais uma vez e não salvá-las em nenhum arquivo/memória (D-016).
 - Não retomar S5-08 (axe/Lighthouse automatizado) sem que essas ferramentas estejam disponíveis no ambiente — desescopado por decisão (D-018), não esquecido.
-- Não retomar S6-10 (dividir arquivos grandes) como parte de um trabalho maior sem isolar isso numa sessão própria com testes por extração — desescopado por decisão (D-022), não esquecido.
+- No item 4 (AUD-024): uma extração por vez, com teste, revisada antes da próxima — nunca fazer as 4 sub-etapas num commit só.
 - Não migrar de hospedagem (GitHub Pages) sem um motivo concreto novo além do que já foi avaliado (D-021).
 
 ## 14. Histórico de evolução
@@ -481,6 +539,7 @@ As 7 sprints do plano (`PLANO_EVOLUCAO_IMPLEMENTACAO.md`) estão encerradas — 
 | 30/07/2026 | Sprint 6 | Novo `src/lib/exportData.ts` + botão "Exportar meus dados" no rodapé — baixa um `.json` com todas as tabelas do usuário direto do Supabase. Testado ao vivo na conta real (contagens conferidas) | AUD-025 resolvido | `src/lib/exportData.ts`, `src/App.tsx`, `src/index.css` |
 | 30/07/2026 | Sprint 6 | `README.md` reescrito por completo: nome atual, 3 módulos, autenticação por senha (estava desatualizado, ainda descrevia Magic Link), 6 tabelas + 9 RPCs, sync/conflitos, exportação, segurança e runbook de rollback | AUD-024 parcialmente resolvido (metade "documentação"; metade "estrutura" cancelada, ver linha seguinte) | `README.md` |
 | 30/07/2026 | Sprint 6 | Sprint encerrada com escopo reduzido (D-023): S6-10 (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio) cancelado por decisão (D-022) — maior risco de regressão da sprint, nenhum critério de aceite dependia disso | Gate G6 aprovado; Sprint 6 concluída (9/10); as 7 sprints do plano estão encerradas; achados residuais parciais (AUD-005/006/011/024) registrados na seção 13 pra decisão do proprietário | STATUS_EVOLUCAO.md desta atualização |
+| 30/07/2026 | Planejamento (pós-sprints) | Josemar pediu plano completo pra fechar os 4 achados residuais. Pesquisa a fundo (arquitetura de sync/timestamps, RPCs condicionais, estrutura dos 3 arquivos grandes) + plano desenhado e aprovado por ele. Decisão tomada: implementar Realtime de verdade pro AUD-006 (custo confirmado irrelevante pro uso dele) | Nenhum código alterado ainda — só pesquisa e planejamento. Plano completo copiado pra seção 13 (arquivo de plano local do Claude Code não sincroniza entre máquinas) | STATUS_EVOLUCAO.md desta atualização, seção 13 |
 
 ### Modelo de atualização
 
