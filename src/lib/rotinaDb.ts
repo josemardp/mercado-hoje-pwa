@@ -68,12 +68,45 @@ export function mergeRotinaStateWithLWW(
 }
 
 /**
+ * Fetch the canonical mh_rotina_state row and overwrite the local copy with
+ * it, then notify useRotinaState so the on-screen toggle reflects it. Used
+ * when the conditional RPC rejects our write as older than what's already
+ * stored (AUD-004) — without this, the rejected write still looked like a
+ * "success" to the caller (no `error`), so the stale local value stuck
+ * around forever with nothing to ever correct it.
+ */
+async function reconcileLocalRotinaStepFromRemote(dayKey: string, stepId: string, userId: string): Promise<void> {
+  const { data: canonical } = await supabase
+    .from('mh_rotina_state')
+    .select('*')
+    .eq('day_key', dayKey)
+    .eq('step_id', stepId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (canonical) {
+    await db.rotinaStepState.put({
+      dayKey: canonical.day_key as string,
+      stepId: canonical.step_id as string,
+      done: !!canonical.done,
+      updatedAt: new Date(canonical.updated_at as string).getTime(),
+      userId: canonical.user_id as string,
+    });
+    window.dispatchEvent(new CustomEvent('mh:rotina-reconciled', { detail: { stepId } }));
+  }
+}
+
+/**
  * Sync a single Rotina step state to Supabase via the conditional RPC —
  * a stale write can never overwrite a newer one already stored server-side.
+ * Returns true even when the RPC rejects the write (applied === false):
+ * that's not a failure to retry — it means another device's edit already
+ * won, and reconcileLocalRotinaStepFromRemote() above already pulled that
+ * canonical value down, so there is nothing left to resync for this entry.
  */
 export async function syncRotinaStepToSupabase(item: RotinaStepStateRecord): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('upsert_rotina_step_if_newer', {
+    const { data: applied, error } = await supabase.rpc('upsert_rotina_step_if_newer', {
       p_day_key: item.dayKey,
       p_step_id: item.stepId,
       p_done: item.done,
@@ -81,7 +114,13 @@ export async function syncRotinaStepToSupabase(item: RotinaStepStateRecord): Pro
       p_user_id: item.userId,
     });
 
-    return !error;
+    if (error) return false;
+
+    if (applied === false) {
+      await reconcileLocalRotinaStepFromRemote(item.dayKey, item.stepId, item.userId);
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -104,7 +143,7 @@ export async function processRotinaSyncQueue(
         case 'complete':
         case 'uncomplete': {
           if (entry.stepId) {
-            const local = await db.rotinaStepState.get([entry.dayKey, entry.stepId]);
+            const local = await db.rotinaStepState.get([entry.dayKey, entry.stepId, userId]);
             if (local) {
               const ok = await syncRotinaStepToSupabase(local);
               if (!ok) throw new Error('Failed to sync rotina step state');

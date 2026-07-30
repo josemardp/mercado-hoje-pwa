@@ -36,7 +36,7 @@ export interface DayItemRecord {
 
 export interface SyncQueueEntry {
   id?: number;
-  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'reset' | 'category';
+  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'reset' | 'category' | 'incrementUse';
   dayKey: string;
   itemId?: string; // UUID v4
   itemName?: string;
@@ -45,6 +45,13 @@ export interface SyncQueueEntry {
   emoji?: string;
   useCount?: number;
   lastUsed?: number;
+  increment?: number; // 'incrementUse' only — amount to add atomically
+  operationId?: string; // 'incrementUse' only — stable across retries, for idempotency (AUD-003)
+  // AUD-009: which account queued this entry. Optional because entries
+  // written before this field existed have none — treated as "belongs to
+  // whoever is currently logged in" (see processPendingQueue), not filtered
+  // out, so nothing already pending gets silently stranded by this change.
+  userId?: string;
   timestamp: number;
   attemptCount?: number;
 }
@@ -72,6 +79,8 @@ export interface RotinaSyncQueueEntry {
   dayKey: string;
   stepId?: string;
   updatedAt?: number;
+  // AUD-009 — see SyncQueueEntry.userId above for why this is optional.
+  userId?: string;
   timestamp: number;
   attemptCount?: number;
 }
@@ -103,6 +112,8 @@ export interface AgendaSyncQueueEntry {
   id?: number;
   type: 'upsert'; // a single type is enough — every mutation just re-reads and pushes the whole row
   taskId: string;
+  // AUD-009 — see SyncQueueEntry.userId above for why this is optional.
+  userId?: string;
   timestamp: number;
   attemptCount?: number;
 }
@@ -129,7 +140,7 @@ class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
   dayItems!: Table<DayItemRecord, [string, string]>; // compound key [dayKey, itemId]
   syncQueue!: Table<SyncQueueEntry, number>;
-  rotinaStepState!: Table<RotinaStepStateRecord, [string, string]>; // compound key [dayKey, stepId]
+  rotinaStepState!: Table<RotinaStepStateRecord, [string, string, string]>; // compound key [dayKey, stepId, userId]
   rotinaSyncQueue!: Table<RotinaSyncQueueEntry, number>;
   agendaTasks!: Table<AgendaTaskRecord, string>;
   agendaSyncQueue!: Table<AgendaSyncQueueEntry, number>;
@@ -152,6 +163,23 @@ class MercadoDatabase extends Dexie {
     });
     this.version(5).stores({
       resetCutoffs: '[userId+dayKey+domain]',
+    });
+    // S2-07 (AUD-009): rotinaStepState's old key [dayKey+stepId] had no
+    // userId, so two accounts on the same browser collided on the same row
+    // for the same day+step (step slugs are fixed/shared across every
+    // account). userId also added to every sync queue, for the same reason.
+    this.version(6).stores({
+      syncQueue: '++id, type, dayKey, timestamp, userId',
+      rotinaStepState: '[dayKey+stepId+userId], dayKey, stepId, done, updatedAt, userId',
+      rotinaSyncQueue: '++id, type, dayKey, timestamp, userId',
+      agendaSyncQueue: '++id, type, taskId, timestamp, userId',
+    }).upgrade(async tx => {
+      // Re-key existing rotinaStepState rows under the new compound key —
+      // every row already carries its own userId field, nothing about the
+      // data itself changes, only the key that indexes it.
+      const rows = await tx.table('rotinaStepState').toArray();
+      await tx.table('rotinaStepState').clear();
+      await tx.table('rotinaStepState').bulkAdd(rows);
     });
   }
 }
@@ -534,6 +562,79 @@ export async function remapItemId(oldId: string, newId: string): Promise<void> {
 }
 
 /**
+ * Collapses redundant pending sync-queue entries before processing them
+ * (S2-04). Two kinds of entry are safe to compact because each one's real
+ * effect is re-derived at processing time, not carried in the entry itself:
+ *  - mark/unmark/postpone/unpostpone for the same (dayKey, itemId): only the
+ *    latest needs to run — it re-reads and pushes whatever db.dayItems
+ *    currently holds, which already reflects every earlier toggle.
+ *  - incrementUse for the same itemId: N separate +1s are equivalent to one
+ *    +N, so they merge into a single entry (a genuinely new net operation,
+ *    not a retry of an old one — the representative keeps its own id/
+ *    operationId, nothing is invented).
+ * 'add', 'reset' and 'category' entries are never touched — a reset in
+ * particular must never be silently dropped or merged away.
+ *
+ * `idsCoveredBy` maps each surviving representative's id to every original
+ * id it stands in for (including itself), so the caller can delete all of
+ * them once the representative's operation succeeds — otherwise the
+ * collapsed-away duplicates would linger in Dexie forever, never processed
+ * and never deleted.
+ */
+export interface CompactedSyncQueue {
+  entries: SyncQueueEntry[];
+  idsCoveredBy: Map<number, number[]>;
+}
+
+export function compactSyncQueueEntries(entries: SyncQueueEntry[]): CompactedSyncQueue {
+  const DAY_ITEM_TYPES = new Set(['mark', 'unmark', 'postpone', 'unpostpone']);
+  const latestByDayItem = new Map<string, SyncQueueEntry>();
+  const coveredByDayItem = new Map<string, number[]>();
+  const incrementByItem = new Map<string, SyncQueueEntry>();
+  const coveredByItem = new Map<string, number[]>();
+  const passthrough: SyncQueueEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.id == null) {
+      passthrough.push(entry);
+      continue;
+    }
+
+    if (DAY_ITEM_TYPES.has(entry.type) && entry.itemId) {
+      const key = `${entry.dayKey}::${entry.itemId}`;
+      const existing = latestByDayItem.get(key);
+      if (!existing || entry.timestamp >= existing.timestamp) {
+        latestByDayItem.set(key, entry);
+      }
+      coveredByDayItem.set(key, [...(coveredByDayItem.get(key) || []), entry.id]);
+    } else if (entry.type === 'incrementUse' && entry.itemId) {
+      const existing = incrementByItem.get(entry.itemId);
+      if (!existing) {
+        incrementByItem.set(entry.itemId, { ...entry });
+      } else {
+        existing.increment = (existing.increment || 1) + (entry.increment || 1);
+      }
+      coveredByItem.set(entry.itemId, [...(coveredByItem.get(entry.itemId) || []), entry.id]);
+    } else {
+      passthrough.push(entry);
+    }
+  }
+
+  const idsCoveredBy = new Map<number, number[]>();
+  for (const [key, representative] of latestByDayItem) {
+    idsCoveredBy.set(representative.id!, coveredByDayItem.get(key) || [representative.id!]);
+  }
+  for (const [itemId, representative] of incrementByItem) {
+    idsCoveredBy.set(representative.id!, coveredByItem.get(itemId) || [representative.id!]);
+  }
+
+  const compactedEntries = [...passthrough, ...latestByDayItem.values(), ...incrementByItem.values()]
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  return { entries: compactedEntries, idsCoveredBy };
+}
+
+/**
  * Process local offline sync queue.
  * Returns only the list of successfully synchronized queue entry IDs.
  * Entries that fail are left in the queue with attemptCount incremented;
@@ -595,20 +696,18 @@ export async function processSyncQueue(
               const ok = await syncDayItemToSupabase(localDayItem);
               if (!ok) throw new Error('Failed to sync day item state');
             }
+          }
+          successIds.push(entry.id!);
+          break;
+        }
 
-            if (entry.type === 'mark' && entry.useCount != null) {
-              const { data: applied, error: itemErr } = await supabase.rpc('update_item_use_count_if_newer', {
-                p_id: entry.itemId,
-                p_user_id: userId,
-                p_use_count: entry.useCount,
-                p_last_used: entry.lastUsed || null,
-                p_updated_at: new Date(entry.lastUsed || entry.timestamp).toISOString(),
-              });
-              if (itemErr) throw new Error(itemErr.message);
-              if (applied === false) {
-                await reconcileLocalItemFromRemote(entry.itemId, userId);
-              }
-            }
+        case 'incrementUse': {
+          // AUD-003: the only place use_count is ever written from a mark —
+          // no absolute "set use_count = N" write competes with this atomic
+          // increment for the same action anymore.
+          if (entry.itemId) {
+            const ok = await atomicIncrementUseCount(entry.itemId, userId, entry.increment || 1, entry.operationId);
+            if (!ok) throw new Error('Failed to increment use_count');
           }
           successIds.push(entry.id!);
           break;
@@ -669,12 +768,17 @@ export async function syncCategoryToSupabase(itemId: string, userId: string, new
 
 /**
  * Atomic increment for use_count via Supabase RPC.
+ * `operationId`, when given, makes the increment idempotent server-side
+ * (AUD-003): a client retry after an ambiguous network failure (server
+ * applied it, but the response never reached this device) reports success
+ * without incrementing a second time.
  */
-export async function atomicIncrementUseCount(itemId: string, userId: string, increment: number = 1): Promise<boolean> {
+export async function atomicIncrementUseCount(itemId: string, userId: string, increment: number = 1, operationId?: string): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('increment_use_count', {
       p_item_id: itemId,
       p_increment: increment,
+      p_operation_id: operationId ?? null,
     });
     if (!error) return true;
 

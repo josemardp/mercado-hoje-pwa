@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
 import { db, MAX_SYNC_ATTEMPTS, type AgendaTaskRecord } from './db';
 import {
@@ -9,6 +9,9 @@ import { getTodayKey } from './categories';
 import { estimateDurationMinutes } from './agendaDurationEstimator';
 import { generateSchedule as computeSchedule, type SchedulableTask } from './agendaScheduler';
 
+// S2-09: see useStore.ts's identical constant for the rationale.
+const FOCUS_SYNC_THROTTLE_MS = 30000;
+
 // Same shape/constraints as useRotinaState: takes `user` as a parameter
 // (resolved once in App.tsx) instead of its own auth subscription.
 export function useAgendaState(user: User | null) {
@@ -18,6 +21,7 @@ export function useAgendaState(user: User | null) {
   const [dayChanged, setDayChanged] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
+  const [focusRefresh, setFocusRefresh] = useState(false);
 
   const todayKey = getTodayKey();
 
@@ -38,43 +42,57 @@ export function useAgendaState(user: User | null) {
     return () => clearInterval(interval);
   }, [todayKey]);
 
+  // AUD-009: entries without a userId predate this field and are treated as
+  // belonging to whoever is currently logged in — see SyncQueueEntry.userId
+  // in db.ts for the full rationale (shared across all three queues).
+  const belongsToActiveUser = useCallback((e: import('./db').AgendaSyncQueueEntry) => !e.userId || e.userId === user?.id, [user]);
+
   const refreshStuckSyncCount = useCallback(async () => {
-    const count = await db.agendaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+    const count = await db.agendaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
     setStuckSyncCount(count);
-  }, []);
+  }, [belongsToActiveUser]);
+
+  // S2-03: mutex — see useStore.ts's processPendingQueue for why this is
+  // needed (overlapping triggers processing the same pending entries twice).
+  const processingRef = useRef(false);
 
   const processPendingQueue = useCallback(async () => {
-    if (!user) return;
-    const allEntries = await db.agendaSyncQueue.toCollection().sortBy('timestamp');
-    const entries = allEntries.filter(e => (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
+    if (!user || processingRef.current) return;
+    processingRef.current = true;
+    try {
+      const allEntries = await db.agendaSyncQueue.toCollection().sortBy('timestamp');
+      const entries = allEntries.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
 
-    if (entries.length > 0) {
-      setSyncStatus('syncing');
-      const successIds = await processAgendaSyncQueue(entries);
+      if (entries.length > 0) {
+        setSyncStatus('syncing');
+        const successIds = await processAgendaSyncQueue(entries);
 
-      for (const id of successIds) {
-        await db.agendaSyncQueue.delete(id);
+        for (const id of successIds) {
+          await db.agendaSyncQueue.delete(id);
+        }
+
+        if (successIds.length === entries.length) {
+          setSyncStatus('synced');
+          setTimeout(() => setSyncStatus('idle'), 2000);
+        } else {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }
       }
 
-      if (successIds.length === entries.length) {
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 2000);
-      } else {
-        setSyncStatus('error');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      }
+      await refreshStuckSyncCount();
+    } finally {
+      processingRef.current = false;
     }
-
-    await refreshStuckSyncCount();
-  }, [user, refreshStuckSyncCount]);
+  }, [user, refreshStuckSyncCount, belongsToActiveUser]);
 
   const retryStuckEntries = useCallback(async () => {
-    const stuck = await db.agendaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
+    const stuck = await db.agendaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).toArray();
     for (const entry of stuck) {
       await db.agendaSyncQueue.update(entry.id!, { attemptCount: 0 });
     }
     await processPendingQueue();
-  }, [processPendingQueue]);
+  }, [processPendingQueue, belongsToActiveUser]);
 
   // ─── Online/offline listener ────────────────────────────────────────
   useEffect(() => {
@@ -96,16 +114,38 @@ export function useAgendaState(user: User | null) {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const count = await db.agendaSyncQueue.filter(e => (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
+      const count = await db.agendaSyncQueue.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) >= MAX_SYNC_ATTEMPTS).count();
       setStuckSyncCount(count);
     })();
-  }, [user]);
+  }, [user, belongsToActiveUser]);
 
   useEffect(() => {
     if (!(isOnline && user)) return;
     (async () => { await processPendingQueue(); })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);
+
+  // S2-09 (AUD-006): see useStore.ts's identical effect for the rationale.
+  const lastFocusSyncRef = useRef(0);
+  useEffect(() => {
+    const trigger = () => {
+      if (!user || !isOnline) return;
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
+      lastFocusSyncRef.current = now;
+      processPendingQueue();
+      setFocusRefresh(prev => !prev);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') trigger();
+    };
+    window.addEventListener('focus', trigger);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', trigger);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user, isOnline, processPendingQueue]);
 
   // ─── Load today's tasks, LWW-merged with remote ─────────────────────
   useEffect(() => {
@@ -169,10 +209,30 @@ export function useAgendaState(user: User | null) {
 
     load();
     return () => { cancelled = true; };
-  }, [todayKey, dayChanged, isOnline, user]);
+  }, [todayKey, dayChanged, isOnline, user, focusRefresh]);
+
+  // AUD-004: agendaDb.ts dispatches this after reconciling a rejected write
+  // (applied === false) with the canonical remote row — see the equivalent
+  // Rotina-side listener in useRotinaState.ts.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { taskId } = (e as CustomEvent<{ taskId: string }>).detail;
+      (async () => {
+        const rec = await db.agendaTasks.get(taskId);
+        setTasks(prev => {
+          if (!rec || rec.deleted) return prev.filter(t => t.id !== taskId);
+          const idx = prev.findIndex(t => t.id === taskId);
+          const next = idx === -1 ? [...prev, rec] : prev.map(t => (t.id === taskId ? rec : t));
+          return next.sort((a, b) => a.order - b.order);
+        });
+      })();
+    };
+    window.addEventListener('mh:agenda-reconciled', handler);
+    return () => window.removeEventListener('mh:agenda-reconciled', handler);
+  }, []);
 
   const addToSyncQueueLocal = useCallback(async (taskId: string) => {
-    await db.agendaSyncQueue.add({ type: 'upsert', taskId, timestamp: Date.now(), attemptCount: 0 });
+    await db.agendaSyncQueue.add({ type: 'upsert', taskId, userId: user?.id, timestamp: Date.now(), attemptCount: 0 });
     if (isOnline && user) processPendingQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);

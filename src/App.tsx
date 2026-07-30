@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useDayState, useItems } from './lib/useStore';
+import { AuthProvider, useAuth } from './lib/AuthProvider';
 import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/categories';
 import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
@@ -84,13 +85,13 @@ const ItemRow = memo(function ItemRow({
   );
 });
 
-export default function App() {
+function AppInner() {
+  const { user, passwordRecovery } = useAuth();
+
   const {
-    user,
     signInWithPassword,
     sendPasswordReset,
     updatePassword,
-    passwordRecovery,
     logout,
     state,
     loading: stateLoading,
@@ -103,7 +104,7 @@ export default function App() {
     syncCategory,
     stuckSyncCount,
     retryStuckEntries,
-  } = useDayState();
+  } = useDayState(user);
 
   const [retryingStuck, setRetryingStuck] = useState(false);
   const handleRetryStuckSync = useCallback(async () => {
@@ -115,7 +116,7 @@ export default function App() {
     }
   }, [retryStuckEntries]);
 
-  const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems();
+  const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems(user);
 
   const rotinaState = useRotinaState(user);
   const agendaState = useAgendaState(user);
@@ -951,6 +952,14 @@ export default function App() {
 
       <div className={`celebration${celebrationShow ? ' show' : ''}`} role="status" aria-live="polite">{celebration}</div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   );
 }
 
