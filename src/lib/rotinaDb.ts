@@ -85,7 +85,7 @@ async function reconcileLocalRotinaStepFromRemote(dayKey: string, stepId: string
     .maybeSingle();
 
   if (canonical) {
-    await db.rotinaStepState.put({
+    await db.rotinaStepStateByUser.put({
       dayKey: canonical.day_key as string,
       stepId: canonical.step_id as string,
       done: !!canonical.done,
@@ -143,7 +143,7 @@ export async function processRotinaSyncQueue(
         case 'complete':
         case 'uncomplete': {
           if (entry.stepId) {
-            const local = await db.rotinaStepState.get([entry.dayKey, entry.stepId, userId]);
+            const local = await db.rotinaStepStateByUser.get([entry.dayKey, entry.stepId, userId]);
             if (local) {
               const ok = await syncRotinaStepToSupabase(local);
               if (!ok) throw new Error('Failed to sync rotina step state');

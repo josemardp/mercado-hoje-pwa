@@ -84,7 +84,7 @@ export function useDayState(user: User | null) {
     await db.items.clear();
     await db.dayItems.clear();
     await db.syncQueue.clear();
-    await db.rotinaStepState.clear();
+    await db.rotinaStepStateByUser.clear();
     await db.rotinaSyncQueue.clear();
     await db.agendaTasks.clear();
     await db.agendaSyncQueue.clear();

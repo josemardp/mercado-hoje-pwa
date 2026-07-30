@@ -167,7 +167,7 @@ export function useRotinaState(user: User | null) {
     async function load() {
       try {
         setLoading(true);
-        const localItems = await db.rotinaStepState
+        const localItems = await db.rotinaStepStateByUser
           .where('dayKey')
           .equals(todayKey)
           .and(item => item.userId === userId)
@@ -192,7 +192,7 @@ export function useRotinaState(user: User | null) {
           ]);
           if (cancelled) return;
           if (remoteItems) {
-            const freshLocalItems = await db.rotinaStepState
+            const freshLocalItems = await db.rotinaStepStateByUser
               .where('dayKey')
               .equals(todayKey)
               .and(item => item.userId === userId)
@@ -207,10 +207,10 @@ export function useRotinaState(user: User | null) {
             const survivingIds = new Set(userMerged.map(item => item.stepId));
             const staleIds = freshLocalItems.filter(item => !survivingIds.has(item.stepId)).map(item => item.stepId);
             if (staleIds.length > 0) {
-              await db.rotinaStepState.bulkDelete(staleIds.map(id => [todayKey, id, userId] as [string, string, string]));
+              await db.rotinaStepStateByUser.bulkDelete(staleIds.map(id => [todayKey, id, userId] as [string, string, string]));
             }
 
-            await db.rotinaStepState.bulkPut(userMerged);
+            await db.rotinaStepStateByUser.bulkPut(userMerged);
             if (cancelled) return;
 
             const mergedDone: Record<string, boolean> = {};
@@ -243,7 +243,7 @@ export function useRotinaState(user: User | null) {
     const handler = (e: Event) => {
       const { stepId } = (e as CustomEvent<{ stepId: string }>).detail;
       (async () => {
-        const rec = await db.rotinaStepState.get([todayKey, stepId, userId]);
+        const rec = await db.rotinaStepStateByUser.get([todayKey, stepId, userId]);
         setState(prev => {
           const done = { ...prev.done };
           if (rec?.done) done[stepId] = true; else delete done[stepId];
@@ -280,7 +280,7 @@ export function useRotinaState(user: User | null) {
       return { done };
     });
 
-    await db.rotinaStepState.put(record);
+    await db.rotinaStepStateByUser.put(record);
 
     if (isOnline) {
       try {
@@ -321,7 +321,7 @@ export function useRotinaState(user: User | null) {
     if (!user) return;
     setState({ done: {} });
 
-    await db.rotinaStepState.where('dayKey').equals(todayKey).and(x => x.userId === user.id).delete();
+    await db.rotinaStepStateByUser.where('dayKey').equals(todayKey).and(x => x.userId === user.id).delete();
 
     if (isOnline) {
       try {
