@@ -107,6 +107,23 @@ export interface AgendaSyncQueueEntry {
   attemptCount?: number;
 }
 
+// ─── Reset cutoffs (AUD-001) ────────────────────────────────────────
+// Compras and Rotina delete rows on reset instead of soft-deleting them
+// (unlike Agenda's `deleted` tombstone), so a device that was offline during
+// the reset has no per-row marker telling it "this is gone on purpose, not
+// just never-synced". This cutoff is that marker at the day+domain level:
+// any write older than it is rejected server-side (see
+// 20260801_add_reset_cutoffs.sql) and filtered out of the local merge,
+// regardless of whether a conflicting remote row still exists to compare against.
+export type ResetDomain = 'compras' | 'rotina';
+
+export interface ResetCutoffRecord {
+  userId: string;
+  dayKey: string;
+  domain: ResetDomain;
+  cutoffAt: number;
+}
+
 // ─── Dexie local DB ────────────────────────────────────────────────
 class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
@@ -116,6 +133,7 @@ class MercadoDatabase extends Dexie {
   rotinaSyncQueue!: Table<RotinaSyncQueueEntry, number>;
   agendaTasks!: Table<AgendaTaskRecord, string>;
   agendaSyncQueue!: Table<AgendaSyncQueueEntry, number>;
+  resetCutoffs!: Table<ResetCutoffRecord, [string, string, string]>; // compound key [userId+dayKey+domain]
 
   constructor() {
     super('MercadoHoje');
@@ -131,6 +149,9 @@ class MercadoDatabase extends Dexie {
     this.version(4).stores({
       agendaTasks: 'id, dayKey, userId, order, done, deleted, updatedAt',
       agendaSyncQueue: '++id, type, taskId, timestamp',
+    });
+    this.version(5).stores({
+      resetCutoffs: '[userId+dayKey+domain]',
     });
   }
 }
@@ -249,6 +270,61 @@ export async function initializeDefaultItems(userId: string) {
   }
 }
 
+// ─── Reset cutoffs (AUD-001) ────────────────────────────────────────
+
+/**
+ * Read the locally cached reset cutoff for a domain/day, if any.
+ * Used so filtering still works offline, without a round-trip.
+ */
+export async function getLocalResetCutoff(userId: string, dayKey: string, domain: ResetDomain): Promise<number | undefined> {
+  const rec = await db.resetCutoffs.get([userId, dayKey, domain]);
+  return rec?.cutoffAt;
+}
+
+/**
+ * Store a reset cutoff locally. Never moves it backwards — a stale fetch
+ * (e.g. a late response racing a newer one) must not reopen a window that
+ * was already closed.
+ */
+export async function setLocalResetCutoff(userId: string, dayKey: string, domain: ResetDomain, cutoffAt: number): Promise<void> {
+  const existing = await db.resetCutoffs.get([userId, dayKey, domain]);
+  if (existing && existing.cutoffAt >= cutoffAt) return;
+  await db.resetCutoffs.put({ userId, dayKey, domain, cutoffAt });
+}
+
+/**
+ * Fetch the authoritative cutoff from the server and cache it locally.
+ * Falls back to whatever is cached locally if offline/unreachable, so a
+ * previously-known cutoff still applies even without a live round-trip.
+ */
+export async function fetchAndStoreResetCutoff(userId: string, dayKey: string, domain: ResetDomain): Promise<number | undefined> {
+  try {
+    const { data, error } = await supabase.rpc('get_reset_cutoff', { p_day_key: dayKey, p_domain: domain });
+    if (error || !data) return getLocalResetCutoff(userId, dayKey, domain);
+    const cutoffAt = new Date(data as string).getTime();
+    await setLocalResetCutoff(userId, dayKey, domain, cutoffAt);
+    return cutoffAt;
+  } catch {
+    return getLocalResetCutoff(userId, dayKey, domain);
+  }
+}
+
+/**
+ * Reset a domain for a day: asks the server to register/advance the cutoff
+ * and delete the now-stale rows atomically, using the SERVER's clock
+ * (clock_timestamp()) as the cutoff boundary rather than this device's own
+ * — a device with a skewed-forward clock can no longer stretch out how long
+ * its pre-reset writes stay valid. Throws on failure so callers can fall
+ * back to a local-only cutoff + queued retry (see resetAll/resetToday).
+ */
+export async function resetDayDomain(userId: string, dayKey: string, domain: ResetDomain): Promise<number> {
+  const { data, error } = await supabase.rpc('reset_day_domain', { p_day_key: dayKey, p_domain: domain });
+  if (error || !data) throw new Error(error?.message || 'reset_day_domain failed');
+  const cutoffAt = new Date(data as string).getTime();
+  await setLocalResetCutoff(userId, dayKey, domain, cutoffAt);
+  return cutoffAt;
+}
+
 // ─── LWW Merge ──────────────────────────────────────
 
 /**
@@ -279,11 +355,19 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
 }
 
 /**
- * Merge local and remote day item arrays using Last-Write-Wins (LWW)
+ * Merge local and remote day item arrays using Last-Write-Wins (LWW).
+ *
+ * `cutoffAt`, when given (the day's reset cutoff — see resetDayDomain),
+ * drops any surviving row older than it. This is what stops a device that
+ * was offline during a reset from resurrecting its stale local copy: the
+ * remote side already deleted the row, so there's nothing there to compare
+ * timestamps against, but the cutoff itself still says "anything from
+ * before this moment doesn't count".
  */
 export function mergeDayItemsWithLWW(
   localItems: DayItemRecord[],
   remoteItems: DayItemRecord[],
+  cutoffAt?: number,
 ): DayItemRecord[] {
   const merged = new Map<string, DayItemRecord>();
 
@@ -300,6 +384,14 @@ export function mergeDayItemsWithLWW(
       const localTs = localItem.updatedAt || 0;
       if (remoteTs > localTs) {
         merged.set(remoteItem.itemId, remoteItem);
+      }
+    }
+  }
+
+  if (cutoffAt != null) {
+    for (const [key, item] of merged) {
+      if ((item.updatedAt || 0) < cutoffAt) {
+        merged.delete(key);
       }
     }
   }
@@ -523,17 +615,10 @@ export async function processSyncQueue(
         }
 
         case 'reset': {
-          // Only delete rows that existed as of the reset moment — a row
-          // created/updated by another device after that must survive,
-          // otherwise a reset queued while offline could wipe out data
-          // that device added later while this one was disconnected.
-          const { error } = await supabase
-            .from('mh_day_items')
-            .delete()
-            .eq('day_key', entry.dayKey)
-            .eq('user_id', userId)
-            .lt('updated_at', new Date(entry.timestamp).toISOString());
-          if (error) throw new Error(error.message);
+          // Registers/advances the server-side cutoff (AUD-001) and deletes
+          // only rows older than it, atomically — a row created/updated by
+          // another device after the reset must survive.
+          await resetDayDomain(userId, entry.dayKey, 'compras');
           successIds.push(entry.id!);
           break;
         }

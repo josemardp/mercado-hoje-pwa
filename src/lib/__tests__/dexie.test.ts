@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { db } from '../db';
+import { db, getLocalResetCutoff, setLocalResetCutoff } from '../db';
 
 describe('Dexie schema (fake-indexeddb)', () => {
-  it('opens the database and exposes every table across the version chain (2→3→4)', async () => {
+  it('opens the database and exposes every table across the version chain (2→3→4→5)', async () => {
     await db.open();
     expect(db.isOpen()).toBe(true);
     expect(db.tables.map(t => t.name).sort()).toEqual([
@@ -10,6 +10,7 @@ describe('Dexie schema (fake-indexeddb)', () => {
       'agendaTasks',
       'dayItems',
       'items',
+      'resetCutoffs',
       'rotinaStepState',
       'rotinaSyncQueue',
       'syncQueue',
@@ -63,5 +64,23 @@ describe('Dexie schema (fake-indexeddb)', () => {
     // colidem na mesma chave composta e só sobra uma linha.
     expect(rowsForToday.filter(r => r.stepId === 'xixi')).toHaveLength(2);
     await db.rotinaStepState.where('dayKey').equals('2026-07-30').delete();
+  });
+
+  // ─── S1-05/S1-06 (Sprint 1, AUD-001): cutoff local nunca deve andar pra
+  // trás — uma resposta atrasada de rede (ex.: uma chamada de get_reset_cutoff
+  // que demorou e chega depois de um reset mais recente) não pode reabrir uma
+  // janela já fechada por um cutoff mais novo.
+  it('setLocalResetCutoff never moves the cutoff backwards', async () => {
+    await setLocalResetCutoff('user-1', '2026-07-30', 'compras', 200);
+    await setLocalResetCutoff('user-1', '2026-07-30', 'compras', 100);
+    expect(await getLocalResetCutoff('user-1', '2026-07-30', 'compras')).toBe(200);
+    await db.resetCutoffs.delete(['user-1', '2026-07-30', 'compras']);
+  });
+
+  it('setLocalResetCutoff advances the cutoff when the new value is newer', async () => {
+    await setLocalResetCutoff('user-1', '2026-07-30', 'rotina', 100);
+    await setLocalResetCutoff('user-1', '2026-07-30', 'rotina', 200);
+    expect(await getLocalResetCutoff('user-1', '2026-07-30', 'rotina')).toBe(200);
+    await db.resetCutoffs.delete(['user-1', '2026-07-30', 'rotina']);
   });
 });
