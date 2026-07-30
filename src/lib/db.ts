@@ -138,25 +138,31 @@ class MercadoDatabase extends Dexie {
 export const db = new MercadoDatabase();
 
 // ─── Default items ─────────────────────────────────────────────────
-const DEFAULT_ITEMS: { id: string; name: string; category: string; emoji: string; qty: number; useCount: number }[] = [
-  { id: '7b539a2f-9150-4822-b5df-1e8dc3a73c1d', name: 'Goiaba', category: 'frutas', emoji: '🍈', qty: 1, useCount: 0 },
-  { id: 'a1c87641-a3f2-45e0-b6ab-d124b893f412', name: 'Morango', category: 'frutas', emoji: '🍓', qty: 1, useCount: 0 },
-  { id: 'df4a1ef1-9556-4cf3-a7bb-20bb949a2123', name: 'Banana', category: 'frutas', emoji: '🍌', qty: 1, useCount: 0 },
-  { id: '2bdf1723-5e16-4dfb-90f7-ebf81643c7b2', name: 'Energético', category: 'bebidas', emoji: '⚡', qty: 1, useCount: 0 },
-  { id: 'c9cf3a56-896e-4731-bc6a-a82f1b4028ac', name: 'Pepsi black', category: 'bebidas', emoji: '🥤', qty: 1, useCount: 0 },
-  { id: '92b4a112-9c12-4fb0-a7d1-e63bd28b9d0b', name: 'Coca zero', category: 'bebidas', emoji: '🥤', qty: 1, useCount: 0 },
-  { id: '3a1df7a2-f8c6-4b90-9ce0-4813cd2f5a89', name: 'Ovos', category: 'mercearia', emoji: '🥚', qty: 1, useCount: 0 },
-  { id: '6fa23ab1-52e1-4560-bf82-7d1bb39ac98d', name: 'Linguiça', category: 'mercearia', emoji: '🌭', qty: 1, useCount: 0 },
-  { id: 'bc92a83f-4e6f-45a7-96a2-bc9cde47bb1e', name: 'Óleo', category: 'mercearia', emoji: '🫙', qty: 2, useCount: 0 },
-  { id: '8fbcf2ab-d456-4ec9-8d12-eb7dfb9c02ab', name: 'Salada', category: 'mercearia', emoji: '🥗', qty: 1, useCount: 0 },
-  { id: 'd19acde2-98ab-4ec7-9bc1-dcfa8b9d034a', name: 'Queijo ralado', category: 'mercearia', emoji: '🧀', qty: 1, useCount: 0 },
-  { id: 'ecbd3fa5-c67d-41a2-9bc2-3cdfa789dc12', name: 'Cenoura', category: 'mercearia', emoji: '🥕', qty: 1, useCount: 0 },
-  { id: '98cfbad1-a2ef-467d-93cb-b9cd7c8f90ab', name: 'Cebola', category: 'mercearia', emoji: '🧅', qty: 1, useCount: 0 },
-  { id: '12cf9a3e-4fb6-45bc-8bd1-abdf8e9c01bc', name: 'Farofa', category: 'mercearia', emoji: '🌾', qty: 1, useCount: 0 },
-  { id: 'bcfdc8a9-45bc-4da8-96ab-cdef90ab12cd', name: 'Calabresa', category: 'mercearia', emoji: '🍖', qty: 1, useCount: 0 },
-  { id: 'f89acde1-bcde-4abc-8def-90abcdef1234', name: 'Sabonete líquido', category: 'casa', emoji: '🧴', qty: 1, useCount: 0 },
-  { id: '098a7bc6-789a-43cd-af12-3456789abcde', name: 'Papel higiênico', category: 'casa', emoji: '🧻', qty: 1, useCount: 0 },
-  { id: '12345678-abcd-4ef1-a345-67890abcdef1', name: 'Chinelo', category: 'outros', emoji: '🩴', qty: 1, useCount: 0 },
+// No `id` here on purpose: initializeDefaultItems() generates a fresh
+// crypto.randomUUID() per item at seed time. These used to be hardcoded
+// shared UUIDs, which meant any two accounts that both seeded defaults
+// ended up with rows sharing the same primary key — the second account's
+// upsert then hit RLS's USING clause on the first account's row (a real
+// row it doesn't own) and failed with 403.
+const DEFAULT_ITEMS: { name: string; category: string; emoji: string; qty: number; useCount: number }[] = [
+  { name: 'Goiaba', category: 'frutas', emoji: '🍈', qty: 1, useCount: 0 },
+  { name: 'Morango', category: 'frutas', emoji: '🍓', qty: 1, useCount: 0 },
+  { name: 'Banana', category: 'frutas', emoji: '🍌', qty: 1, useCount: 0 },
+  { name: 'Energético', category: 'bebidas', emoji: '⚡', qty: 1, useCount: 0 },
+  { name: 'Pepsi black', category: 'bebidas', emoji: '🥤', qty: 1, useCount: 0 },
+  { name: 'Coca zero', category: 'bebidas', emoji: '🥤', qty: 1, useCount: 0 },
+  { name: 'Ovos', category: 'mercearia', emoji: '🥚', qty: 1, useCount: 0 },
+  { name: 'Linguiça', category: 'mercearia', emoji: '🌭', qty: 1, useCount: 0 },
+  { name: 'Óleo', category: 'mercearia', emoji: '🫙', qty: 2, useCount: 0 },
+  { name: 'Salada', category: 'mercearia', emoji: '🥗', qty: 1, useCount: 0 },
+  { name: 'Queijo ralado', category: 'mercearia', emoji: '🧀', qty: 1, useCount: 0 },
+  { name: 'Cenoura', category: 'mercearia', emoji: '🥕', qty: 1, useCount: 0 },
+  { name: 'Cebola', category: 'mercearia', emoji: '🧅', qty: 1, useCount: 0 },
+  { name: 'Farofa', category: 'mercearia', emoji: '🌾', qty: 1, useCount: 0 },
+  { name: 'Calabresa', category: 'mercearia', emoji: '🍖', qty: 1, useCount: 0 },
+  { name: 'Sabonete líquido', category: 'casa', emoji: '🧴', qty: 1, useCount: 0 },
+  { name: 'Papel higiênico', category: 'casa', emoji: '🧻', qty: 1, useCount: 0 },
+  { name: 'Chinelo', category: 'outros', emoji: '🩴', qty: 1, useCount: 0 },
 ];
 
 // ─── Initialization ────────────────────────────────────────────────
@@ -188,9 +194,11 @@ export async function initializeDefaultItems(userId: string) {
       // Offline or network error: fall back to local seed
     }
 
-    // Prepare default items with current userId
+    // Prepare default items with current userId and a fresh id each — never
+    // reuse a fixed id across accounts (see DEFAULT_ITEMS comment above).
     const localDefaults: ItemRecord[] = DEFAULT_ITEMS.map(item => ({
       ...item,
+      id: crypto.randomUUID(),
       userId,
     }));
 
