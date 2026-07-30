@@ -29,7 +29,7 @@ const manifest: Partial<ManifestOptions> = {
       short_name: 'Rotina',
       description: 'Abre direto na aba Rotina',
       url: '/mercado-hoje-pwa/?tab=rotina',
-      icons: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+      icons: [{ src: 'icons/rotina-icon-192.png', sizes: '192x192', type: 'image/png' }],
     },
   ],
   icons: [

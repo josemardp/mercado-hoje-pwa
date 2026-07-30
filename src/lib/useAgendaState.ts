@@ -253,6 +253,27 @@ export function useAgendaState(user: User | null) {
     await persistTask(updated);
   }, [tasks, persistTask]);
 
+  // Swaps `order` with the adjacent task (by current order) — this is what
+  // the scheduler uses to decide sequencing and gap membership around fixed
+  // appointments, so reordering here is what actually changes the schedule
+  // the next time generateSchedule() runs.
+  const moveTask = useCallback(async (id: string, direction: -1 | 1) => {
+    const sorted = tasks.slice().sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(t => t.id === id);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    const now = Date.now();
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const updatedA: AgendaTaskRecord = { ...a, order: b.order, updatedAt: now };
+    const updatedB: AgendaTaskRecord = { ...b, order: a.order, updatedAt: now };
+
+    setTasks(prev => prev.map(t => (t.id === updatedA.id ? updatedA : t.id === updatedB.id ? updatedB : t)));
+    await persistTask(updatedA);
+    await persistTask(updatedB);
+  }, [tasks, persistTask]);
+
   // Soft-deletes every task in today's agenda — the "reiniciar" action for
   // Agenda mode, mirroring resetToday()'s role for the fixed routine.
   const clearAll = useCallback(async () => {
@@ -304,6 +325,7 @@ export function useAgendaState(user: User | null) {
     updateTaskDuration,
     toggleFixed,
     removeTask,
+    moveTask,
     clearAll,
     toggleDone,
     generateSchedule,

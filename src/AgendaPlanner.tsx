@@ -18,7 +18,7 @@ function addMinutesToHHMM(hhmm: string, minutes: number): string {
 
 export default function AgendaPlanner({
   tasks, loading, syncStatus, stuckSyncCount, retryStuckEntries,
-  addTask, updateTaskTitle, updateTaskDuration, toggleFixed, removeTask, toggleDone, generateSchedule,
+  addTask, updateTaskTitle, updateTaskDuration, toggleFixed, removeTask, moveTask, toggleDone, generateSchedule,
 }: AgendaPlannerProps) {
   const [windowMode, setWindowMode] = useState<'relativo' | 'absoluto'>('relativo');
   const [relativeHours, setRelativeHours] = useState(2);
@@ -69,11 +69,11 @@ export default function AgendaPlanner({
     try { await retryStuckEntries(); } finally { setRetryingStuck(false); }
   }, [retryStuckEntries]);
 
+  const hasScheduleAny = useMemo(() => tasks.some(t => t.scheduledStart), [tasks]);
   const sortedTasks = useMemo(() => {
-    const hasSchedule = tasks.some(t => t.scheduledStart);
-    if (!hasSchedule) return tasks;
+    if (!hasScheduleAny) return tasks.slice().sort((a, b) => a.order - b.order);
     return tasks.slice().sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''));
-  }, [tasks]);
+  }, [tasks, hasScheduleAny]);
 
   let scheduledIndex = 0;
 
@@ -206,7 +206,7 @@ export default function AgendaPlanner({
             </tr>
           </thead>
           <tbody>
-            {sortedTasks.map(task => {
+            {sortedTasks.map((task, index) => {
               const isScheduled = !!task.scheduledStart;
               if (isScheduled) scheduledIndex++;
               return (
@@ -248,6 +248,28 @@ export default function AgendaPlanner({
                     </button>
                   </td>
                   <td className="agenda-row-actions">
+                    {!hasScheduleAny && (
+                      <span className="agenda-reorder-btns">
+                        <button
+                          className="agenda-reorder-btn"
+                          onClick={() => moveTask(task.id, -1)}
+                          disabled={index === 0}
+                          aria-label={`Mover "${task.title}" pra cima`}
+                          title="Mover pra cima"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          className="agenda-reorder-btn"
+                          onClick={() => moveTask(task.id, 1)}
+                          disabled={index === sortedTasks.length - 1}
+                          aria-label={`Mover "${task.title}" pra baixo`}
+                          title="Mover pra baixo"
+                        >
+                          ▼
+                        </button>
+                      </span>
+                    )}
                     <input
                       type="checkbox"
                       checked={task.done}
