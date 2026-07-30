@@ -79,8 +79,11 @@ export function useDayState() {
   // One-time recovery path only (forgot password) — not the everyday login,
   // which now goes through signInWithPassword above.
   const sendPasswordReset = useCallback(async (email: string) => {
+    // AUD-015: derive from Vite's own base path instead of hardcoding
+    // '/mercado-hoje-pwa/' — works for any base/domain the app is deployed
+    // under (a different GitHub Pages repo name, a custom domain, etc).
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/mercado-hoje-pwa/',
+      redirectTo: window.location.origin + import.meta.env.BASE_URL,
     });
     if (error) throw error;
   }, []);

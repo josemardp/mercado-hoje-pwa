@@ -1,0 +1,67 @@
+import { describe, it, expect } from 'vitest';
+import { db } from '../db';
+
+describe('Dexie schema (fake-indexeddb)', () => {
+  it('opens the database and exposes every table across the version chain (2→3→4)', async () => {
+    await db.open();
+    expect(db.isOpen()).toBe(true);
+    expect(db.tables.map(t => t.name).sort()).toEqual([
+      'agendaSyncQueue',
+      'agendaTasks',
+      'dayItems',
+      'items',
+      'rotinaStepState',
+      'rotinaSyncQueue',
+      'syncQueue',
+    ]);
+  });
+
+  it('round-trips a grocery item through the local store', async () => {
+    await db.items.put({
+      id: 'test-item-1',
+      name: 'Teste',
+      category: 'outros',
+      useCount: 0,
+      userId: 'user-1',
+    });
+    const found = await db.items.get('test-item-1');
+    expect(found?.name).toBe('Teste');
+    await db.items.delete('test-item-1');
+  });
+
+  it('round-trips an agenda task keyed only by id', async () => {
+    await db.agendaTasks.put({
+      id: 'task-1',
+      dayKey: '2026-07-30',
+      title: 'Tarefa de teste',
+      estimatedMinutes: 30,
+      fixed: false,
+      order: 0,
+      done: false,
+      deleted: false,
+      updatedAt: Date.now(),
+      userId: 'user-1',
+    });
+    const found = await db.agendaTasks.get('task-1');
+    expect(found?.title).toBe('Tarefa de teste');
+    await db.agendaTasks.delete('task-1');
+  });
+
+  // ─── AUD-009 (Alto): a chave composta da Rotina é [dayKey+stepId], sem
+  // userId — duas contas no mesmo navegador colidem na mesma linha local
+  // para o mesmo passo/dia. Documentado como esperado-falhar até a
+  // Sprint 2 incluir userId na chave.
+  it.fails('AUD-009: duas contas diferentes não deveriam compartilhar a mesma linha local de um passo da Rotina', async () => {
+    await db.rotinaStepState.put({
+      dayKey: '2026-07-30', stepId: 'xixi', done: true, updatedAt: 100, userId: 'user-a',
+    });
+    await db.rotinaStepState.put({
+      dayKey: '2026-07-30', stepId: 'xixi', done: false, updatedAt: 200, userId: 'user-b',
+    });
+    const rowsForToday = await db.rotinaStepState.where('dayKey').equals('2026-07-30').toArray();
+    // O esperado (correto) seria uma linha por conta; hoje as duas contas
+    // colidem na mesma chave composta e só sobra uma linha.
+    expect(rowsForToday.filter(r => r.stepId === 'xixi')).toHaveLength(2);
+    await db.rotinaStepState.where('dayKey').equals('2026-07-30').delete();
+  });
+});
