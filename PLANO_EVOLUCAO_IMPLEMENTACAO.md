@@ -1,8 +1,11 @@
 # Plano de evolução e implementação — Meu Diário
 
 **Origem:** `AUDITORIA_COMPLETA.md`
+**Acompanhamento vivo:** `STATUS_EVOLUCAO.md`
 **Horizonte sugerido:** 7 sprints de 1 semana
 **Premissa:** uma pessoa desenvolvedora com apoio de revisão/testes. Se a disponibilidade for parcial, manter a ordem e ampliar a duração, sem misturar os objetivos.
+
+> Antes de iniciar ou encerrar qualquer sessão de implementação, ler e atualizar `STATUS_EVOLUCAO.md`.
 
 ## 1. Objetivos do plano
 
