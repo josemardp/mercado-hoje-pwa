@@ -5,17 +5,22 @@ import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/c
 import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
 import { classifyItem } from './lib/classifyCategory';
+import RotinaTab from './RotinaTab';
+import { ROTINA_STEPS } from './lib/rotinaSteps';
+import { useRotinaState } from './lib/useRotinaState';
+import { useAgendaState } from './lib/useAgendaState';
 
 // stroke uses var(--on-accent), not a hardcoded white: in dark mode the
 // checked category color is a bright tint, and white-on-bright fails contrast.
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L20 6" stroke="var(--on-accent)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-type TabKey = 'hoje' | 'concluidos' | 'proximo';
+type TabKey = 'hoje' | 'concluidos' | 'proximo' | 'rotina';
 
 const TABS: { key: TabKey; label: string; emoji: string }[] = [
   { key: 'hoje', label: 'Hoje', emoji: '🛒' },
   { key: 'concluidos', label: 'Concluídos', emoji: '✅' },
   { key: 'proximo', label: 'Próximo', emoji: '🕒' },
+  { key: 'rotina', label: 'Rotina', emoji: '🌅' },
 ];
 
 const ItemRow = memo(function ItemRow({
@@ -109,6 +114,9 @@ export default function App() {
 
   const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems();
 
+  const rotinaState = useRotinaState(user);
+  const agendaState = useAgendaState(user);
+
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -125,7 +133,9 @@ export default function App() {
   const [correctionShowPicker, setCorrectionShowPicker] = useState(false);
   const [celebration, setCelebration] = useState('');
   const [celebrationShow, setCelebrationShow] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('hoje');
+  const [activeTab, setActiveTab] = useState<TabKey>(() =>
+    new URLSearchParams(window.location.search).get('tab') === 'rotina' ? 'rotina' : 'hoje'
+  );
   const [showIosInstallModal, setShowIosInstallModal] = useState(false);
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -142,6 +152,15 @@ export default function App() {
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, [user, stateLoading]);
+
+  // PWA manifest shortcut ("Rotina", long-press the app icon) lands here
+  // with ?tab=rotina — activeTab's lazy initializer above already reads it,
+  // this effect only strips the param so it doesn't linger in the URL.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'rotina') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
 
   const todayKey = getTodayKey();
   const dateStr = formatDateBR(todayKey);
@@ -409,6 +428,7 @@ export default function App() {
         {Array.from({ length: 15 }).map((_, i) => <span key={i} />)}
       </div>
 
+      {activeTab !== 'rotina' && (
       <header>
         <div className="header-top">
           <div className="basket">🧺</div>
@@ -489,6 +509,7 @@ export default function App() {
           </div>
         )}
       </header>
+      )}
 
       {/* ─── TABS ─── */}
       <div className="tabs-bar">
@@ -498,7 +519,9 @@ export default function App() {
               ? todayItems.length - checkedCount
               : tab.key === 'concluidos'
               ? concludedItems.length
-              : postponedItems.length;
+              : tab.key === 'proximo'
+              ? postponedItems.length
+              : ROTINA_STEPS.length - Object.keys(rotinaState.done).length;
           return (
             <button
               key={tab.key}
@@ -513,7 +536,11 @@ export default function App() {
         })}
       </div>
 
-      <main>
+      <main className={activeTab === 'rotina' ? 'main-rotina' : undefined}>
+        {activeTab === 'rotina' ? (
+          <RotinaTab {...rotinaState} agenda={agendaState} />
+        ) : (
+        <>
         {/* ─── ADD INPUT ─── */}
         <div className="add-section">
           <div className="add-input-wrap">
@@ -747,6 +774,8 @@ export default function App() {
             ))
           )
         )}
+        </>
+        )}
       </main>
 
       <footer>
@@ -754,9 +783,11 @@ export default function App() {
           <button className="logout-btn" onClick={logout}>
             Sair da conta
           </button>
-          <button className="reset-btn" onClick={resetAll}>
-            Limpar marcações
-          </button>
+          {activeTab !== 'rotina' && (
+            <button className="reset-btn" onClick={resetAll}>
+              Limpar marcações
+            </button>
+          )}
         </div>
       </footer>
 
