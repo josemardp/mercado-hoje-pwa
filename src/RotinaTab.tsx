@@ -160,11 +160,15 @@ export default function RotinaTab({
       setResetArmed(true);
       setTimeout(() => setResetArmed(false), 2600);
     } else {
-      resetToday();
+      if (mode === 'agenda') {
+        agenda.clearAll();
+      } else {
+        resetToday();
+        setManualFocus(null);
+      }
       setResetArmed(false);
-      setManualFocus(null);
     }
-  }, [resetArmed, resetToday]);
+  }, [resetArmed, resetToday, mode, agenda]);
 
   const handleRetryStuck = useCallback(async () => {
     setRetryingStuck(true);
@@ -201,8 +205,12 @@ export default function RotinaTab({
             <button
               className={`rotina-reset-btn${resetArmed ? ' rotina-confirming' : ''}`}
               onClick={handleResetClick}
-              title="Reiniciar rotina"
-              aria-label={resetArmed ? 'Confirmar reinício da rotina' : 'Reiniciar rotina'}
+              title={mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'}
+              aria-label={
+                resetArmed
+                  ? `Confirmar ${mode === 'agenda' ? 'limpeza da agenda' : 'reinício da rotina'}`
+                  : mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'
+              }
             >
               {resetArmed ? '✓' : '↺'}
             </button>

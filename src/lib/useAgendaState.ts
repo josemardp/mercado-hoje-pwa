@@ -253,6 +253,17 @@ export function useAgendaState(user: User | null) {
     await persistTask(updated);
   }, [tasks, persistTask]);
 
+  // Soft-deletes every task in today's agenda — the "reiniciar" action for
+  // Agenda mode, mirroring resetToday()'s role for the fixed routine.
+  const clearAll = useCallback(async () => {
+    const now = Date.now();
+    const toDelete = tasks.map(t => ({ ...t, deleted: true, updatedAt: now }));
+    setTasks([]);
+    for (const t of toDelete) {
+      await persistTask(t);
+    }
+  }, [tasks, persistTask]);
+
   const generateSchedule = useCallback(async (windowStart: string, windowEnd: string) => {
     const schedulable: SchedulableTask[] = tasks.map(t => ({
       id: t.id,
@@ -293,6 +304,7 @@ export function useAgendaState(user: User | null) {
     updateTaskDuration,
     toggleFixed,
     removeTask,
+    clearAll,
     toggleDone,
     generateSchedule,
   };
