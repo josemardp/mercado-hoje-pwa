@@ -533,6 +533,10 @@ footer {
   transition: background .15s var(--ease-out);
 }
 .reset-btn:active { background: var(--overlay-1); }
+.reset-btn-confirming {
+  background: rgba(220, 38, 38, 0.15);
+  color: #dc2626;
+}
 
 .celebration {
   position: fixed;
@@ -916,6 +920,7 @@ footer {
 
 .footer-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   width: 100%;
 }

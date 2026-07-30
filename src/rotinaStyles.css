@@ -385,6 +385,15 @@ main.main-rotina {
   padding: 4px 6px;
   font-size: 12px;
 }
+.agenda-fixed-time-input {
+  width: 84px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: var(--rotina-ink);
+  padding: 4px 6px;
+  font-size: 12px;
+}
 .agenda-fixed-badge {
   margin-top: 4px;
   display: inline-block;

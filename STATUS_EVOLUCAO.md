@@ -83,28 +83,28 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 3 CONCLUÍDA` |
-| Fase atual | Sprint 3 concluída (motor da Agenda reescrito por gaps livres; AUD-002 crítico resolvido; AUD-012 resolvido) |
+| Situação geral | `EM EXECUÇÃO — SPRINT 4 EM IMPLEMENTAÇÃO (5/8)` |
+| Fase atual | Ações destrutivas separadas e confirmadas (Compras/Rotina/Agenda), logout protegido, estados vazios/Markdown corrigidos, recuperação de senha completa. Falta o editor dedicado (S4-01/S4-03) e undo temporário (S4-05) |
 | Sprint ativa | Sprint 4 — Editor da Agenda e ações seguras |
-| Foco atual | Iniciar Sprint 4: editor completo de tarefa (S4-01, ataca o restante de AUD-011 — tipo/hora/duração/validação inline) |
-| Próxima entrega | Sprint 4 — editor e ações seguras (AUD-007, AUD-010, AUD-011, AUD-013, AUD-021, AUD-022, AUD-026) |
-| Progresso do plano | ~55% (32/58 itens — Sprints 0, 1, 2 e 3 completas; 3 sprints restantes) |
-| Sprints concluídas | 4 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3) |
-| Achados resolvidos | 9 de 26 (AUD-008, AUD-015, AUD-016, AUD-001, AUD-003, AUD-004, AUD-009, AUD-002, AUD-012). AUD-005/AUD-006 parcialmente mitigados — não contados como resolvidos. AUD-011 permanece aberto (só a parte de política do motor foi tratada; o editor completo é escopo da Sprint 4) |
+| Foco atual | Decidir se S4-01/S4-03 (editor dedicado + editar depois de gerar) e S4-05 (undo) seguem nesta sprint ou passam pra uma decisão registrada de escopo, depois seguir pra Sprint 5 |
+| Próxima entrega | Fechar Sprint 4 ou iniciar Sprint 5 — acessibilidade, responsividade e PWA |
+| Progresso do plano | ~64% (37/58 itens — Sprints 0-3 completas; Sprint 4 em 5/8) |
+| Sprints concluídas | 4 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3); Sprint 4 em andamento |
+| Achados resolvidos | 15 de 26 (+ AUD-007, AUD-010, AUD-013, AUD-021, AUD-022, AUD-026 nesta atualização). AUD-005/AUD-006 parcialmente mitigados; AUD-011 parcialmente resolvido (3 de 4 problemas) — nenhum dos dois contado como resolvido |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `db2782d` (run `30550014403`, aprovado) — inclui a correção do bug crítico de produção (D-015) |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (49 passaram, 0 vermelhos, 0 pendentes); build aprovado; `pnpm audit --prod` sem vulnerabilidades |
+| Último deploy estável conhecido | commit `db2782d` (run `30550014403`, aprovado) — Sprint 4 ainda não teve seu próprio run confirmado nesta atualização |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (50 passaram, 0 vermelhos, 0 pendentes); build aprovado; `pnpm audit --prod` sem vulnerabilidades; principais mudanças de UI verificadas ao vivo na conta real do proprietário (ver seção 9) |
 
 ### Resumo por prioridade
 
 | Prioridade | Total | Concluídos | Restantes |
 |---|---:|---:|---:|
 | Crítico | 2 | 2 | 0 |
-| Alto | 7 | 4 | 3 |
-| Médio/Alto | 1 | 0 | 1 |
-| Médio | 11 | 3 | 8 |
-| Baixo | 5 | 0 | 5 |
-| **Total** | **26** | **9** | **17** |
+| Alto | 7 | 5 | 2 |
+| Médio/Alto | 1 | 1 | 0 |
+| Médio | 11 | 5 | 6 |
+| Baixo | 5 | 2 | 3 |
+| **Total** | **26** | **15** | **11** |
 
 ### Critérios de cálculo
 
@@ -211,20 +211,20 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 ### Sprint 4 — Editor da Agenda e ações seguras
 
 **Estado:** `EM IMPLEMENTAÇÃO`
-**Progresso:** 0/8 — 0%
+**Progresso:** 5/8 — 62%
 **Dependência:** Sprint 3 e contratos de sincronização da Sprint 2.
 **Gate de saída:** tarefas são editáveis; ações destrutivas são explícitas/reversíveis; recuperação de senha é completa.
 
 | ID | Entrega | Estado | Evidência/observação |
 |---|---|---|---|
-| S4-01 | Criar editor completo de tarefa | `NÃO INICIADO` | — |
-| S4-02 | Persistir por debounce/blur | `NÃO INICIADO` | — |
-| S4-03 | Permitir editar e recalcular agenda | `NÃO INICIADO` | — |
-| S4-04 | Separar ações de desmarcar e limpar | `NÃO INICIADO` | — |
-| S4-05 | Confirmação contextual e undo | `NÃO INICIADO` | — |
-| S4-06 | Proteger logout com pendências | `NÃO INICIADO` | — |
-| S4-07 | Corrigir estados vazios e textos iOS | `NÃO INICIADO` | — |
-| S4-08 | Completar fluxo `PASSWORD_RECOVERY` | `EM IMPLEMENTAÇÃO` | Evento, abertura automática e autocomplete implementados; faltam link expirado, limpeza do sinal e testes. |
+| S4-01 | Criar editor completo de tarefa | `EM IMPLEMENTAÇÃO` | Parcial: campo de horário inline em toda linha fixa (`AgendaPlanner.tsx`), validação bloqueia salvar "fixo" sem horário (na criação e ao montar a agenda). Falta o editor dedicado (modal/painel com salvar/cancelar explícitos) previsto originalmente — a edição continua sendo inline, célula a célula. |
+| S4-02 | Persistir por debounce/blur | `CONCLUÍDO` | Título e duração usam rascunho local (`titleDrafts`/`durationDrafts`) e só persistem no `onBlur`, não mais a cada tecla (AUD-013). |
+| S4-03 | Permitir editar e recalcular agenda | `NÃO INICIADO` | Depois de gerar a agenda, horário/duração continuam somente leitura — ainda é preciso limpar a agenda pra editar. Não escopado nesta atualização. |
+| S4-04 | Separar ações de desmarcar e limpar | `CONCLUÍDO` | Nova ação `unmarkAllChecked` ("Desmarcar concluídos", só desmarca) separada de `resetAll` (renomeado pra "Limpar lista do dia", com confirmação de dois toques) — resolve AUD-010 na aba Compras. |
+| S4-05 | Confirmação contextual e undo | `EM IMPLEMENTAÇÃO` | Confirmação de dois toques em "Limpar lista do dia"; `resetArmed` da Rotina/Agenda agora reseta ao trocar de modo (não confirma mais a ação errada — resto do AUD-010). Undo temporário pra remoção/limpeza não foi implementado. |
+| S4-06 | Proteger logout com pendências | `CONCLUÍDO` | Modal conta pendências reais (não só "travadas") nas três filas antes de sair; oferece "Sincronizar agora" ou "Sair mesmo assim (descartar)" em vez de apagar tudo silenciosamente (AUD-007). |
+| S4-07 | Corrigir estados vazios e textos iOS | `CONCLUÍDO` | Lista vazia agora diz "Sua lista está vazia" quando não há itens, distinto de "Tudo no carrinho!" quando há itens e todos concluídos (AUD-021); `**negrito**` literal do modal iOS virou `<strong>` (AUD-022). |
+| S4-08 | Completar fluxo `PASSWORD_RECOVERY` | `CONCLUÍDO` | Link de recuperação expirado/já usado agora mostra mensagem clara na tela de login (`authLinkError`, parseado do hash de erro do Supabase) em vez de deixar um hash cru na URL; sinal `passwordRecovery` é limpo (`clearPasswordRecovery`) depois que a senha é salva, não só por reload. Autocomplete já estava concluído. |
 
 ### Sprint 5 — Acessibilidade, responsividade e PWA
 
@@ -274,13 +274,13 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | AUD-004 — `applied=false` ignorado | Alto | 2 | `CONCLUÍDO` | Rotina e Agenda agora buscam a linha canônica e reconciliam Dexie + estado React quando a RPC rejeita por LWW (`rotinaDb.ts`/`agendaDb.ts` + eventos `mh:rotina-reconciled`/`mh:agenda-reconciled`). Testado em `syncReconciliation.test.ts`. |
 | AUD-005 — LWW pelo relógio local | Alto | 1 | `EM IMPLEMENTAÇÃO` | Parcial: o cutoff de reset agora usa `clock_timestamp()` do servidor, não o relógio do cliente (fecha o gap de clock skew especificamente pra fronteira de reset). O versionamento de escrita campo-a-campo (toggle de item/passo fora de reset) continua em `Date.now()` do cliente — um aparelho com relógio adiantado ainda pode inflar seu próprio `updated_at` além do cutoff. Fechamento completo exige migrar todo write pra timestamp/versão emitido pelo servidor (D-009); não escopado nesta sprint. |
 | AUD-006 — ausência de atualização remota aberta | Alto | 2 | `EM IMPLEMENTAÇÃO` | Parcial (S2-09): recuperar foco/visibilidade da aba agora reprocessa a fila e refaz o pull+merge, com throttle de 30s, nos três domínios. Falta a evolução completa sugerida pela auditoria (Realtime) — decisão D-011 registra que não foi prototipada ainda por falta de justificativa de custo/benefício. |
-| AUD-007 — logout perde pendências | Alto | 4 | `NÃO INICIADO` | — |
+| AUD-007 — logout perde pendências | Alto | 4 | `CONCLUÍDO` | Modal de confirmação conta pendências reais nas três filas (Compras/Rotina/Agenda) antes de sair; oferece "Sincronizar agora" (chama `processSyncQueue` dos três hooks) ou "Sair mesmo assim". Verificado ao vivo (modal mostrou "Tudo sincronizado" corretamente com 0 pendências). |
 | AUD-008 — migration duplicada | Alto | 0 | `CONCLUÍDO` | `20260727_add_increment_use_count_rpc.sql` renomeado pra `20260727120000_...` (ordem de dependência real confirmada pelo próprio SQL: referencia `mh_items.id UUID`/`user_id`, que só existem depois de `20260727_update_auth_and_day_items.sql`). Histórico remoto verificado diretamente em `supabase_migrations.schema_migrations`: 7 versões locais = 7 versões remotas, uma a uma. Nenhuma migration já aplicada foi re-executada. |
 | AUD-009 — isolamento local incompleto | Alto | 2 | `CONCLUÍDO` | Nova tabela `rotinaStepStateByUser` com chave `[dayKey+stepId+userId]` (a tentativa original de trocar a chave da tabela existente quebrou em produção — ver D-015; a correção usa criar+copiar em `version(6)` e apagar a antiga em `version(7)`); `userId` adicionado a todas as filas de sync (`SyncQueueEntry`/`RotinaSyncQueueEntry`/`AgendaSyncQueueEntry`), com leitura/limpeza filtrada pela conta ativa. Testado em `dexie.test.ts`, incluindo regressão do incidente de migração (Vitest + Chromium real). |
-| AUD-010 — reset ambíguo/destrutivo | Médio/Alto | 4 | `NÃO INICIADO` | — |
-| AUD-011 — fixo sem horário editável | Médio | 4 | `EM IMPLEMENTAÇÃO` | Parcial (S3-05): o motor agora trata um fixo sem horário como "soft-fixed" (duração respeitada, só comprimida como último recurso pra nunca sobrepor). Os problemas de UI/UX descritos no achado continuam abertos: criar "Fixo" sem horário, não ter campo de hora ao converter flexível→fixo, apagar `fixedStart` ao desativar/reativar, e duração virar texto após gerar — tudo isso é o editor completo da Sprint 4 (S4-01). |
+| AUD-010 — reset ambíguo/destrutivo | Médio/Alto | 4 | `CONCLUÍDO` | "Limpar marcações" renomeado pra "Limpar lista do dia" (nome bate com o efeito real: some com `inToday`, não só desmarca) + confirmação de dois toques; nova ação separada "Desmarcar concluídos" cobre o caso que o rótulo antigo prometia. `resetArmed` da Rotina/Agenda deixou de ser compartilhado entre modos — trocar de modo cancela a confirmação armada. Ambos verificados ao vivo. |
+| AUD-011 — fixo sem horário editável | Médio | 4 | `EM IMPLEMENTAÇÃO` | 3 dos 4 problemas resolvidos: criar "Fixo" sem horário agora é bloqueado; converter flexível→fixo revela um campo de horário inline na própria linha; desativar e reativar "fixo" não apaga mais o horário (memória local na UI, capturada no momento de desativar — verificado ao vivo, incluindo um bug real encontrado e corrigido durante o teste). Falta o 4º: depois de gerada a agenda, duração/horário continuam só leitura (S4-03, não escopado). |
 | AUD-012 — duração mínima inconsistente | Médio | 3 | `CONCLUÍDO` | `AgendaPlanner.tsx` e `useAgendaState.ts`'s `updateTaskDuration` agora usam o mesmo piso `FLOOR_MINUTES` (10) do motor — uma tarefa nunca mais "cresce" de 5 pra 10 durante a compressão. Testado em `agendaScheduler.test.ts`. |
-| AUD-013 — persistência por tecla | Médio | 4 | `NÃO INICIADO` | — |
+| AUD-013 — persistência por tecla | Médio | 4 | `CONCLUÍDO` | Título e duração da Agenda usam rascunho local, persistindo só no `blur` — uma frase inteira digitada agora gera uma escrita, não uma por tecla. |
 | AUD-014 — update oculto na Rotina | Médio | 5 | `NÃO INICIADO` | — |
 | AUD-015 — ambiente não reproduzível | Médio | 0 | `CONCLUÍDO` | Seed desabilitado (`db.seed.enabled=false`, não existe `seed.sql`); `site_url`/`additional_redirect_urls` corrigidos pra `:5173`; `sendPasswordReset` usa `import.meta.env.BASE_URL` em vez de caminho fixo; CI agora falha se `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` estiverem vazios. |
 | AUD-016 — CI incompleto | Médio | 0 | `CONCLUÍDO` | `.github/workflows/deploy.yml` agora roda lint, typecheck, test, `pnpm audit --prod`, build e validação de migrations antes do deploy; `packageManager` fixado. Primeiro run real (`30539728743`) aprovado de ponta a ponta. |
@@ -288,12 +288,12 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | AUD-018 — controles/layout Agenda | Médio | 5 | `NÃO INICIADO` | — |
 | AUD-019 — dados pessoais em logs | Médio | 6 | `NÃO INICIADO` | — |
 | AUD-020 — headers ausentes | Médio | 6 | `NÃO INICIADO` | — |
-| AUD-021 — estado vazio enganoso | Baixo | 4 | `NÃO INICIADO` | — |
-| AUD-022 — Markdown literal no iOS | Baixo | 4 | `NÃO INICIADO` | — |
+| AUD-021 — estado vazio enganoso | Baixo | 4 | `CONCLUÍDO` | "Tudo no carrinho! Boas compras!" só aparece quando havia itens e todos foram concluídos (`totalCount > 0`); lista genuinamente vazia agora mostra "Sua lista está vazia" em vez de comemorar algo que nunca existiu. |
+| AUD-022 — Markdown literal no iOS | Baixo | 4 | `CONCLUÍDO` | `**Compartilhar**`/`**Adicionar à Tela de Início**`/`**Adicionar**` trocados por `<strong>` no modal de instalação iOS. |
 | AUD-023 — SEO/performance inicial | Baixo | 6 | `NÃO INICIADO` | — |
 | AUD-024 — documentação/estrutura | Baixo | 6 | `NÃO INICIADO` | — |
 | AUD-025 — retenção indefinida | Baixo | 6 | `NÃO INICIADO` | — |
-| AUD-026 — recuperação de senha incompleta | Médio | 4 | `EM IMPLEMENTAÇÃO` | `PASSWORD_RECOVERY` abre o formulário automaticamente (`useStore.ts`/`App.tsx`) e os campos têm `autoComplete="email"/"current-password"/"new-password"`. Ainda faltam: tratar link expirado (mensagem específica) e limpar o sinal `passwordRecovery` depois que a senha é definida (hoje só é resetado por reload de página). |
+| AUD-026 — recuperação de senha incompleta | Médio | 4 | `CONCLUÍDO` | `PASSWORD_RECOVERY` abre o formulário automaticamente; campos com autocomplete correto (já concluído antes). Agora também: link expirado/já usado mostra mensagem clara na tela de login (`authLinkError` no `AuthProvider`, parseado do hash de erro do Supabase, testado ao vivo com `error_code=otp_expired`); sinal `passwordRecovery` é limpo (`clearPasswordRecovery`) assim que a senha é salva com sucesso. |
 
 ## 8. Gates de qualidade e release
 
@@ -303,7 +303,7 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | G1 — testes/CI | `APROVADO` | Sprint 0 concluída | Testes/CI implementados e aprovados localmente e no run real do Actions (`30539728743`, commit `470be73`). |
 | G2 — integridade de dados | `APROVADO` | Sprints 1 e 2 concluídas | Sprints 1 e 2 concluídas nesta atualização; AUD-001/003/004/009 resolvidos, AUD-005/006 parcialmente mitigados (risco residual registrado, não bloqueia o gate). |
 | G3 — Agenda correta | `APROVADO` | Sprint 3 concluída | Sprint 3 concluída nesta atualização; AUD-002 (crítico) e AUD-012 resolvidos; 1000 combinações aleatórias sem sobreposição. |
-| G4 — UX segura | `PENDENTE` | Sprint 4 concluída | — |
+| G4 — UX segura | `PENDENTE` | Sprint 4 concluída | 5/8 entregas concluídas nesta atualização; faltam S4-01/S4-03 (editor dedicado, editar após gerar) e o undo de S4-05 pro gate fechar. |
 | G5 — interface acessível/PWA | `PENDENTE` | Sprint 5 concluída | — |
 | G6 — consolidação | `PENDENTE` | Sprint 6 e metas finais concluídas | — |
 | Produção final | `PENDENTE` | G1 a G6 aprovados e smoke test | — |
@@ -339,6 +339,9 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | 30/07/2026 | Sprint 3 | Não verificado ao vivo no navegador (motor puro, sem UI nova; a tela da Agenda exige login autenticado, que esta sessão não tem como fazer sem o proprietário) | Cobertura de teste automatizado usada como verificação principal — registrado como limitação, não como verificação equivalente a uso real |
 | 30/07/2026 | Correção (incidente) | `npx tsc -b` / `pnpm lint` / `pnpm test` (novo teste de regressão simulando um banco na v3) / `pnpm build` | Aprovado; 50 testes (novo caso cobre exatamente o incidente de produção) |
 | 30/07/2026 | Correção (incidente) | Reprodução ao vivo no Chromium real (não só `fake-indexeddb`): banco simulado na v3 com dado seedado, aberto com a definição atual (v2→v7) via `import()` dinâmico do `db.ts` real, com nome de banco isolado pra evitar interferência da própria aba já rodando o app | Migração completa sem erro; linha migrada corretamente pra `rotinaStepStateByUser` |
+| 30/07/2026 | Sprint 4 | `npx tsc -b` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm audit --prod` | Aprovado; 50 testes aprovados; 0 vulnerabilidades |
+| 30/07/2026 | Sprint 4 | Verificado ao vivo na conta real do proprietário (`pnpm dev` + Playwright, login com credenciais fornecidas pontualmente pelo proprietário, não persistidas): "Desmarcar concluídos" desmarca sem remover; "Limpar lista do dia" arma/confirma/desarma corretamente e não apagou a lista real (8 itens intactos ao final); trocar de modo Rotina↔Agenda desarma a confirmação pendente; validação bloqueia tarefa fixa sem horário; modal de logout mostra contagem de pendências corretamente | Todas as verificações passaram; um bug real foi encontrado e corrigido durante o teste (ver linha seguinte) |
+| 30/07/2026 | Sprint 4 | Durante a verificação ao vivo, descoberto que a memória de `fixedStart` (AUD-011) só funcionava se o horário tivesse sido digitado pela própria linha — uma tarefa fixada já na criação (via a linha de "nova tarefa") perdia o horário ao desativar/reativar "fixo", reproduzindo o bug original | Corrigido capturando `task.fixedStart` na memória local no momento de desativar, antes do domínio limpar o campo; reverificado ao vivo com sucesso (horário "16:45" preservado corretamente) | `src/AgendaPlanner.tsx` |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -382,6 +385,7 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-013 | 30/07/2026 | Um compromisso fixo que ultrapassa o início/fim da janela conta como `shortfallMinutes`, não entra em `fixedConflicts` (S3-02/S3-05) | `fixedConflicts` é reservado pra quando a compressão NUNCA poderia resolver o problema (dois fixos colidindo entre si) — um fixo simplesmente rodar além da janela que o usuário escolheu é normal (ex.: consulta médica que passa do horário planejado) e já é informação útil via shortfall, não um erro que impeça salvar | Critério de aceite da Sprint 3 ("fixos sobrepostos exibem erro antes de salvar") interpretado como sobreposição ENTRE fixos, não fixo-vs-janela; testado em `agendaScheduler.test.ts` | `src/lib/agendaScheduler.ts`; teste "counts a fixed commitment running past the window end as shortfall" |
 | D-014 | 30/07/2026 | Tratar tarefa "fixa sem horário" (fixedFloating) como comprimível em último recurso (nunca sobrepor tem prioridade sobre preservar sua duração integral) | Sem horário âncora, essa tarefa não é uma "âncora" real — mas sua duração também não deveria mudar levianamente. Dado que o invariante "nenhuma sobreposição" é inegociável (critério de aceite da Sprint 3) e essa tarefa não tem posição fixa que a torne impossível de cortar, cortá-la como último recurso é a única forma de honrar os dois requisitos ao mesmo tempo | Casos raros onde isso se aplica podem mostrar uma duração menor que a configurada; a correção completa (editor dedicado que force decisão explícita do usuário nesse cenário) é escopo da Sprint 4 | `src/lib/agendaScheduler.ts`; cobertura do achado AUD-011 nesta atualização |
 | D-015 | 30/07/2026 | Migrar `rotinaStepState` pra uma chave composta nova via um par "criar tabela nova + copiar dados, depois apagar a tabela velha numa versão posterior" (2 versões do Dexie), em vez de redeclarar a chave da tabela existente | A correção original de AUD-009 (Sprint 2) tentou trocar a chave primária de `rotinaStepState` numa única versão do Dexie — IndexedDB não permite alterar a chave primária de uma tabela existente, e isso quebrou em produção pra qualquer pessoa que já tivesse o banco local instalado, travando o app com "Erro ao carregar os dados" (UpgradeError). Reportado pelo proprietário via screenshot | Tabela renomeada pra `rotinaStepStateByUser` (`version(6)` cria e migra, `version(7)` apaga a antiga); todo o código atualizado pro novo nome; verificado com um teste de regressão simulando um banco real na v3, tanto no Vitest (`fake-indexeddb`) quanto ao vivo no Chromium | commit desta correção; `src/lib/db.ts`; `dexie.test.ts` |
+| D-016 | 30/07/2026 | Durante a verificação ao vivo da Sprint 4, o proprietário forneceu a senha real da conta (que apareceu sem querer no resultado de uma ferramenta de inspeção do DOM) pra permitir o login e o teste. A sessão usou a senha uma vez pra testar, mas não a salvou em memória, arquivo `.env` nem em nenhum outro lugar, mesmo com o pedido explícito do proprietário pra guardar | Regra global do próprio proprietário ("nunca ecoar segredos no chat/log") e boa prática de segurança — persistir uma credencial de produção em texto puro é um risco maior que digitá-la de novo quando precisar, mesmo pra um app de baixo risco | Nenhum arquivo de segredo foi criado; a senha não aparece em nenhum commit nem neste documento | commits desta sessão |
 
 ### Modelo para nova decisão
 
@@ -393,27 +397,26 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Sprint 3 concluída e gate G3 aprovado. Iniciar a Sprint 4 (editor da Agenda e ações seguras): editor completo de tarefa (S4-01, AUD-011), separando ações destrutivas e completando a recuperação de senha (S4-08, AUD-026, já parcialmente implementada).
+Sprint 4 está em 5/8 (S4-02, S4-04, S4-06, S4-07, S4-08 concluídos; S4-01/S4-05 parciais; S4-03 não iniciado). Decidir explicitamente se o restante (editor dedicado, editar após gerar, undo temporário) segue nesta sprint ou é registrado como decisão de escopo reduzido antes de avançar pra Sprint 5.
 
 ### Sequência recomendada
 
-1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 4 antes de codar.
-2. S4-01/S4-02/S4-03: editor de tarefa com título, flexível/fixo, horário obrigatório quando fixo, duração e validação inline; persistir por debounce/blur (não por tecla, AUD-013); permitir editar e recalcular a agenda já gerada sem precisar limpar tudo — isso fecha o resto do AUD-011 (D-014 desta atualização documenta o que já foi tratado no motor).
-3. S4-04/S4-05: separar "Desmarcar concluídos" de "Limpar lista do dia"/"Reiniciar rotina"/"Limpar agenda" (AUD-010); confirmação contextual por ação e modo, com `resetArmed` não mais compartilhado entre Rotina e Agenda.
-4. S4-06: proteger logout — contar pendências de todos os domínios antes de sair, oferecer sincronizar agora (AUD-007).
-5. S4-07: corrigir estado `0 de 0` enganoso e marcação Markdown literal no modal iOS (AUD-021/AUD-022).
-6. S4-08: completar `PASSWORD_RECOVERY` — tratar link expirado com mensagem específica e limpar o sinal depois que a senha é definida (hoje só reseta por reload).
-7. Ao final da Sprint 4: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
-8. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
+1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 4 antes de continuar.
+2. Decidir S4-01/S4-03: construir o editor dedicado (modal/painel com salvar/cancelar) e permitir editar horário/duração depois de gerada a agenda, ou registrar decisão explícita reduzindo o escopo (a edição inline atual já resolve 3 dos 4 problemas do AUD-011).
+3. S4-05: se undo temporário for exigido pelo critério de aceite, implementar pra remoção/limpeza (ex.: toast com "desfazer" por alguns segundos antes de persistir de vez).
+4. Ao final: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
+5. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto.
+6. Depois de fechar a Sprint 4 (ou decidir reduzir seu escopo), iniciar a Sprint 5 — acessibilidade, responsividade e PWA.
 
 ### Não fazer ainda
 
-- Não alterar RPCs de produção além do que a Sprint 4 exigir, com migration versionada.
+- Não alterar RPCs de produção além do que for exigido, com migration versionada.
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
 - Não revisitar a decisão de não prototipar Realtime (D-011) sem um motivo concreto novo.
-- Não iniciar melhorias visuais/acessibilidade da Sprint 5 além do que a Sprint 4 já toca incidentalmente.
+- Não iniciar melhorias visuais/acessibilidade da Sprint 5 até decidir o que falta da Sprint 4.
 - Não adicionar evoluções de produto do backlog.
 - Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009).
+- Não pedir nem persistir credenciais reais do proprietário — se for necessário testar ao vivo, usar as credenciais uma vez e não salvá-las em nenhum arquivo/memória (D-016).
 - Não iniciar a Sprint 5 antes do gate de saída da Sprint 4 (nenhum botão com rótulo mais brando que seu efeito; logout com fila pendente exige decisão explícita).
 
 ## 14. Histórico de evolução
@@ -439,6 +442,7 @@ Sprint 3 concluída e gate G3 aprovado. Iniciar a Sprint 4 (editor da Agenda e a
 | 30/07/2026 | Sprint 3 | Motor da Agenda reescrito por gaps livres: constrói intervalos entre âncoras fixas, comprime só dentro da capacidade real de cada um, detecta fixos sobrepostos (`fixedConflicts`) e sinaliza janela inválida (`invalidWindow`) em vez de aceitar silenciosamente | AUD-002 (crítico) resolvido; cenário exato da auditoria verificado sem sobreposição | `src/lib/agendaScheduler.ts`; `agendaScheduler.test.ts` (1000 combinações aleatórias) |
 | 30/07/2026 | Sprint 3 | Piso de duração unificado entre UI (`AgendaPlanner.tsx`) e domínio (`useAgendaState.ts`'s `updateTaskDuration`), ambos usando `FLOOR_MINUTES`; `generateSchedule` do hook nunca mais persiste quando o motor sinaliza janela inválida ou fixos em conflito | AUD-012 resolvido; Sprint 3 concluída, gate G3 aprovado | `src/AgendaPlanner.tsx`, `src/lib/useAgendaState.ts` |
 | 30/07/2026 | Correção (incidente) | Bug de produção reportado pelo proprietário: app travava com "Erro ao carregar os dados / UpgradeError: Not yet support for changing primary key" pra qualquer pessoa com o banco local já instalado. Causa: a correção do AUD-009 (Sprint 2) tentou trocar a chave primária de `rotinaStepState` numa única versão do Dexie, o que IndexedDB não permite. Corrigido migrando pra uma tabela nova (`rotinaStepStateByUser`) em duas versões (criar+copiar, depois apagar a antiga) | Decisão D-015; verificado com teste de regressão simulando um banco na v3 (Vitest + Chromium real) | commit desta correção |
+| 30/07/2026 | Sprint 4 | Ações destrutivas separadas e confirmadas: "Desmarcar concluídos" (novo, só desmarca) separado de "Limpar lista do dia" (renomeado, com confirmação de dois toques); `resetArmed` da Rotina/Agenda não é mais compartilhado entre modos; logout agora conta pendências reais nas três filas e oferece sincronizar antes de sair; estado vazio e Markdown do modal iOS corrigidos; recuperação de senha trata link expirado e limpa o próprio sinal | AUD-007, AUD-010, AUD-013, AUD-021, AUD-022, AUD-026 resolvidos; AUD-011 parcialmente resolvido (3 de 4 problemas); todas as mudanças de UI verificadas ao vivo na conta real do proprietário, incluindo um bug de memória de horário encontrado e corrigido durante o teste | `src/App.tsx`, `src/lib/useStore.ts`, `src/RotinaTab.tsx`, `src/AgendaPlanner.tsx`, `src/lib/useAgendaState.ts`, `src/lib/AuthProvider.tsx` |
 
 ### Modelo de atualização
 
