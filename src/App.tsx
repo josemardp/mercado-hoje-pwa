@@ -128,6 +128,7 @@ function AppInner() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [forgotMode, setForgotMode] = useState(false);
@@ -462,23 +463,47 @@ function AppInner() {
               <form onSubmit={handleLoginSubmit} className="login-form">
                 <input
                   type="email"
+                  name="email"
                   placeholder="Seu e-mail..."
                   className="login-input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
+                  autoComplete="username"
                   required
                 />
                 {!forgotMode && (
-                  <input
-                    type="password"
-                    placeholder="Sua senha..."
-                    className="login-input"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
+                  <div className="login-password-wrap">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      placeholder="Sua senha..."
+                      className="login-input"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="login-password-toggle"
+                      onClick={() => setShowPassword(v => !v)}
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? (
+                        <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+                          <path d="M3 3L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c5 0 9 3.5 10 7-.4 1.3-1.1 2.6-2.1 3.7M6.7 6.7C4.6 8 3 9.9 2 12c1 3.5 5 7 10 7 1.4 0 2.7-.3 3.9-.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+                          <path d="M2 12C3 8.5 7 5 12 5s9 3.5 10 7c-1 3.5-5 7-10 7s-9-3.5-10-7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 )}
                 {authError && <div className="login-error">{authError}</div>}
                 <button type="submit" className="login-submit-btn" disabled={authLoading}>
