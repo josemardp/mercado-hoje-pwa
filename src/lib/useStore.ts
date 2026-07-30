@@ -624,6 +624,33 @@ export function useDayState(user: User | null) {
     return newState;
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
+  // AUD-010: separate from resetAll below — this only unchecks items still
+  // marked as bought, keeping them on today's list. resetAll wipes the whole
+  // list (including items never checked); the two were previously conflated
+  // behind a single "Limpar marcações" button that acted like this one but
+  // actually behaved like the other.
+  const unmarkAllChecked = useCallback(async () => {
+    if (!user) return;
+    const checkedIds = Object.keys(state.checked).filter(id => state.checked[id]);
+    if (checkedIds.length === 0) return;
+
+    setState(prev => ({ ...prev, checked: {} }));
+
+    for (const itemId of checkedIds) {
+      await saveSingleItemState(itemId, {
+        checked: false,
+        postponed: state.postponed[itemId] || false,
+        inToday: true,
+      });
+      await addToSyncQueueLocal({
+        type: 'unmark',
+        dayKey: todayKey,
+        itemId,
+        timestamp: Date.now(),
+      });
+    }
+  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
+
   const resetAll = useCallback(async () => {
     if (!user) return;
     const newState = { checked: {}, postponed: {}, inToday: {} };
@@ -700,6 +727,7 @@ export function useDayState(user: User | null) {
     toggleItem,
     postponeItem,
     unpostponeItem,
+    unmarkAllChecked,
     resetAll,
     addItemToToday,
     syncCategory,

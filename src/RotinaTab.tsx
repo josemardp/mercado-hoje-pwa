@@ -43,7 +43,7 @@ export default function RotinaTab({
   done, loading, syncStatus, toggleStep, resetToday,
   stuckSyncCount, retryStuckEntries, agenda,
 }: RotinaTabProps) {
-  const [mode, setMode] = useState<'fixa' | 'agenda'>('fixa');
+  const [mode, setModeState] = useState<'fixa' | 'agenda'>('fixa');
   // `useRotinaState` runs unconditionally in App.tsx regardless of which tab
   // is active, so by the time this component actually mounts (user taps the
   // Rotina tab), `loading` may have already settled — there's no live
@@ -55,6 +55,16 @@ export default function RotinaTab({
   const [resetArmed, setResetArmed] = useState(false);
   const [retryingStuck, setRetryingStuck] = useState(false);
   const [sparkles, setSparkles] = useState<{ id: number; left: number; delay: number; emoji: string }[]>([]);
+
+  // AUD-010: resetArmed used to be shared across both modes — arming the
+  // confirmation in Agenda, then switching to Rotina fixa, would let the
+  // next tap confirm the WRONG action (reiniciar rotina instead of limpar
+  // agenda, or vice versa). Switching modes now always cancels any armed
+  // confirmation.
+  const setMode = useCallback((next: 'fixa' | 'agenda') => {
+    setResetArmed(false);
+    setModeState(next);
+  }, []);
 
   const initialPreset = useMemo(() => getSkyPresetForStep(ROTINA_STEPS[0]), []);
   const [bgState, setBgState] = useState<{ front: 'a' | 'b'; a: SkyPreset; b: SkyPreset }>({
@@ -233,10 +243,10 @@ export default function RotinaTab({
           </div>
 
           <div className="agenda-mode-toggle rotina-mode-toggle">
-            <button className={mode === 'fixa' ? 'active' : ''} onClick={() => setMode('fixa')}>
+            <button className={mode === 'fixa' ? 'active' : ''} onClick={() => setMode('fixa')} aria-pressed={mode === 'fixa'}>
               Rotina fixa
             </button>
-            <button className={mode === 'agenda' ? 'active' : ''} onClick={() => setMode('agenda')}>
+            <button className={mode === 'agenda' ? 'active' : ''} onClick={() => setMode('agenda')} aria-pressed={mode === 'agenda'}>
               Agenda
             </button>
           </div>

@@ -19,7 +19,7 @@ function addMinutesToHHMM(hhmm: string, minutes: number): string {
 
 export default function AgendaPlanner({
   tasks, loading, syncStatus, stuckSyncCount, retryStuckEntries,
-  addTask, updateTaskTitle, updateTaskDuration, toggleFixed, removeTask, moveTask, toggleDone, generateSchedule,
+  addTask, updateTaskTitle, updateTaskDuration, toggleFixed, updateFixedStart, removeTask, moveTask, toggleDone, generateSchedule,
 }: AgendaPlannerProps) {
   const [windowMode, setWindowMode] = useState<'relativo' | 'absoluto'>('relativo');
   const [relativeHours, setRelativeHours] = useState(2);
@@ -36,10 +36,41 @@ export default function AgendaPlanner({
   const [generating, setGenerating] = useState(false);
   const [retryingStuck, setRetryingStuck] = useState(false);
 
+  // AUD-013: title/duration used to persist (local write + remote push) on
+  // every keystroke. Typing now only updates this local draft; the real
+  // update fires on blur instead, so a whole sentence produces one write.
+  const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
+  const [durationDrafts, setDurationDrafts] = useState<Record<string, number>>({});
+  const commitTitle = useCallback((id: string) => {
+    const draft = titleDrafts[id];
+    if (draft === undefined) return;
+    updateTaskTitle(id, draft);
+    setTitleDrafts(prev => { const next = { ...prev }; delete next[id]; return next; });
+  }, [titleDrafts, updateTaskTitle]);
+  const commitDuration = useCallback((id: string) => {
+    const draft = durationDrafts[id];
+    if (draft === undefined) return;
+    updateTaskDuration(id, draft);
+    setDurationDrafts(prev => { const next = { ...prev }; delete next[id]; return next; });
+  }, [durationDrafts, updateTaskDuration]);
+
+  // AUD-011: toggling "fixo" off used to erase fixedStart outright, so
+  // turning it back on lost the time you'd already set. This remembers the
+  // last time typed for each task, purely on the UI side, independent of
+  // whatever the domain currently has stored for it.
+  const [fixedStartDrafts, setFixedStartDrafts] = useState<Record<string, string>>({});
+
   const handleAddTask = useCallback(async () => {
     const title = newTitle.trim();
     if (!title) return;
-    await addTask(title, { fixed: newFixed, fixedStart: newFixed && newFixedStart ? newFixedStart : undefined });
+    // AUD-011: a "fixed" task with no time wasn't rejected before — it just
+    // silently existed in that confusing state until the editor fixed it up.
+    if (newFixed && !newFixedStart) {
+      setValidationError('Defina o horário do compromisso fixo antes de adicionar.');
+      return;
+    }
+    setValidationError('');
+    await addTask(title, { fixed: newFixed, fixedStart: newFixed ? newFixedStart : undefined });
     setNewTitle('');
     setNewFixed(false);
     setNewFixedStart('');
@@ -53,6 +84,15 @@ export default function AgendaPlanner({
 
     if (windowEnd <= windowStart) {
       setValidationError('O horário final precisa ser depois do inicial.');
+      return;
+    }
+    // AUD-011: a fixed task without a time can't be scheduled at all (it has
+    // no anchor) — block here with a specific message instead of letting the
+    // engine silently treat it as an unanchored "soft-fixed" task.
+    const missingTime = tasks.filter(t => t.fixed && !t.fixedStart);
+    if (missingTime.length > 0) {
+      const names = missingTime.map(t => `"${t.title}"`).join(', ');
+      setValidationError(`Defina o horário de: ${names} antes de montar a agenda.`);
       return;
     }
     setValidationError('');
@@ -228,7 +268,19 @@ export default function AgendaPlanner({
                 <tr key={task.id} className={`agenda-task-row${task.done ? ' agenda-task-done' : ''}`}>
                   <td>{isScheduled ? String(scheduledIndex).padStart(2, '0') : '—'}</td>
                   <td>
-                    {isScheduled ? `${task.scheduledStart}–${task.scheduledEnd}` : (task.fixed && task.fixedStart ? task.fixedStart : '—')}
+                    {isScheduled ? `${task.scheduledStart}–${task.scheduledEnd}` : task.fixed ? (
+                      <input
+                        className="agenda-fixed-time-input"
+                        type="time"
+                        value={fixedStartDrafts[task.id] ?? task.fixedStart ?? ''}
+                        onChange={e => {
+                          const value = e.target.value;
+                          setFixedStartDrafts(prev => ({ ...prev, [task.id]: value }));
+                          if (value) updateFixedStart(task.id, value);
+                        }}
+                        aria-label={`Horário do compromisso fixo "${task.title}"`}
+                      />
+                    ) : '—'}
                   </td>
                   <td>
                     {isScheduled ? (
@@ -241,8 +293,9 @@ export default function AgendaPlanner({
                         type="number"
                         min={FLOOR_MINUTES}
                         step={FLOOR_MINUTES}
-                        value={task.estimatedMinutes}
-                        onChange={e => updateTaskDuration(task.id, Number(e.target.value))}
+                        value={durationDrafts[task.id] ?? task.estimatedMinutes}
+                        onChange={e => setDurationDrafts(prev => ({ ...prev, [task.id]: Number(e.target.value) }))}
+                        onBlur={() => commitDuration(task.id)}
                         disabled={task.fixed}
                       />
                     )}
@@ -251,13 +304,25 @@ export default function AgendaPlanner({
                     <input
                       className="agenda-title-edit"
                       type="text"
-                      value={task.title}
-                      onChange={e => updateTaskTitle(task.id, e.target.value)}
+                      value={titleDrafts[task.id] ?? task.title}
+                      onChange={e => setTitleDrafts(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      onBlur={() => commitTitle(task.id)}
                     />
                     <button
                       className={`agenda-fixed-badge${task.fixed ? ' agenda-fixed-on' : ''}`}
-                      onClick={() => toggleFixed(task.id)}
+                      onClick={() => {
+                        // AUD-011: capture task.fixedStart into the local
+                        // memory HERE, at the moment of un-fixing, before the
+                        // domain clears it — a task whose time was only ever
+                        // set at creation (never edited through the row's
+                        // own input) would otherwise have nothing remembered
+                        // to restore when toggled back on.
+                        const remembered = fixedStartDrafts[task.id] ?? task.fixedStart;
+                        if (remembered) setFixedStartDrafts(prev => ({ ...prev, [task.id]: remembered }));
+                        toggleFixed(task.id, remembered);
+                      }}
                       title={task.fixed ? 'Tornar flexível (comprimível)' : 'Marcar como compromisso fixo (não comprimível)'}
+                      aria-pressed={task.fixed}
                     >
                       {task.fixed ? 'fixo' : 'flexível'}
                     </button>

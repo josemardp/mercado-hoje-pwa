@@ -353,5 +353,8 @@ export function useRotinaState(user: User | null) {
     resetToday,
     stuckSyncCount,
     retryStuckEntries,
+    // S4-06: lets App.tsx offer "sincronizar agora" for this domain's queue
+    // before a logout that would otherwise discard pending entries.
+    processSyncQueue: processPendingQueue,
   };
 }

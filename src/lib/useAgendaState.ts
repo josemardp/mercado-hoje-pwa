@@ -302,6 +302,11 @@ export function useAgendaState(user: User | null) {
     if (!existing) return Promise.resolve();
     return patchTask(id, { fixed: !existing.fixed, fixedStart: !existing.fixed ? fixedStart : undefined });
   }, [tasks, patchTask]);
+  // AUD-011: lets an already-fixed task's time be edited directly (there
+  // was previously no way to set/change fixedStart after creation without
+  // toggling fixed off and back on — which itself used to lose the time,
+  // see toggleFixed above and the UI-side memory in AgendaPlanner.tsx).
+  const updateFixedStart = useCallback((id: string, fixedStart: string) => patchTask(id, { fixed: true, fixedStart }), [patchTask]);
   const toggleDone = useCallback((id: string) => {
     const existing = tasks.find(t => t.id === id);
     if (!existing) return Promise.resolve();
@@ -398,10 +403,14 @@ export function useAgendaState(user: User | null) {
     updateTaskTitle,
     updateTaskDuration,
     toggleFixed,
+    updateFixedStart,
     removeTask,
     moveTask,
     clearAll,
     toggleDone,
     generateSchedule,
+    // S4-06: lets App.tsx offer "sincronizar agora" for this domain's queue
+    // before a logout that would otherwise discard pending entries.
+    processSyncQueue: processPendingQueue,
   };
 }

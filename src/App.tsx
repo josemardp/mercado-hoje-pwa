@@ -86,7 +86,7 @@ const ItemRow = memo(function ItemRow({
 });
 
 function AppInner() {
-  const { user, passwordRecovery } = useAuth();
+  const { user, passwordRecovery, clearPasswordRecovery, authLinkError } = useAuth();
 
   const {
     signInWithPassword,
@@ -99,11 +99,13 @@ function AppInner() {
     toggleItem,
     postponeItem,
     unpostponeItem,
+    unmarkAllChecked,
     resetAll,
     addItemToToday,
     syncCategory,
     stuckSyncCount,
     retryStuckEntries,
+    processSyncQueue,
   } = useDayState(user);
 
   const [retryingStuck, setRetryingStuck] = useState(false);
@@ -120,6 +122,64 @@ function AppInner() {
 
   const rotinaState = useRotinaState(user);
   const agendaState = useAgendaState(user);
+
+  // AUD-010: "Limpar marcações" used to fire resetAll() (which wipes the
+  // whole day's list, not just the checkmarks the label implied) with zero
+  // confirmation. Armed two-tap confirm, same convention as Rotina/Agenda's
+  // reset button — separate armed state so switching context can't leave a
+  // stale confirmation pointed at the wrong action (see RotinaTab.tsx).
+  const [clearListArmed, setClearListArmed] = useState(false);
+  const handleClearListClick = useCallback(() => {
+    if (!clearListArmed) {
+      setClearListArmed(true);
+      setTimeout(() => setClearListArmed(false), 2600);
+    } else {
+      resetAll();
+      setClearListArmed(false);
+    }
+  }, [clearListArmed, resetAll]);
+
+  // AUD-007: logout used to clear every local table/queue unconditionally,
+  // silently discarding anything that hadn't synced yet (including entries
+  // that failed repeatedly and were already flagged as "stuck"). Count
+  // pending entries across all three domains before allowing it through,
+  // and offer to sync first instead of just warning after the fact.
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutPendingCount, setLogoutPendingCount] = useState<number | null>(null);
+  const [syncingBeforeLogout, setSyncingBeforeLogout] = useState(false);
+
+  const countAllPendingSync = useCallback(async () => {
+    const [compras, rotina, agenda] = await Promise.all([
+      db.syncQueue.count(),
+      db.rotinaSyncQueue.count(),
+      db.agendaSyncQueue.count(),
+    ]);
+    return compras + rotina + agenda;
+  }, []);
+
+  const handleLogoutClick = useCallback(async () => {
+    setLogoutPendingCount(await countAllPendingSync());
+    setShowLogoutConfirm(true);
+  }, [countAllPendingSync]);
+
+  const handleSyncNowBeforeLogout = useCallback(async () => {
+    setSyncingBeforeLogout(true);
+    try {
+      await Promise.all([
+        processSyncQueue(),
+        rotinaState.processSyncQueue(),
+        agendaState.processSyncQueue(),
+      ]);
+      setLogoutPendingCount(await countAllPendingSync());
+    } finally {
+      setSyncingBeforeLogout(false);
+    }
+  }, [processSyncQueue, rotinaState, agendaState, countAllPendingSync]);
+
+  const handleConfirmLogout = useCallback(async () => {
+    setShowLogoutConfirm(false);
+    await logout();
+  }, [logout]);
 
   const {
     needRefresh: [needRefresh],
@@ -268,12 +328,13 @@ function AppInner() {
       setNewPassword('');
       setNewPasswordConfirm('');
       setChangePasswordStatus('idle');
+      clearPasswordRecovery();
       showToast('🔒 Senha atualizada!');
     } catch (err) {
       console.error(err);
       setChangePasswordStatus('error');
     }
-  }, [newPassword, newPasswordConfirm, updatePassword, showToast]);
+  }, [newPassword, newPasswordConfirm, updatePassword, showToast, clearPasswordRecovery]);
 
   const handleCategoryCorrection = useCallback(async (newCategory: string) => {
     if (correctionItemId == null) return;
@@ -455,6 +516,9 @@ function AppInner() {
           <div className="login-card">
             <h1 className="login-title">Meu Diário</h1>
             <p className="login-desc">Compras, rotina e agenda no seu dia a dia.</p>
+            {authLinkError && (
+              <div className="login-error" style={{ marginBottom: 12 }}>{authLinkError}</div>
+            )}
             {resetSent ? (
               <div className="login-success">
                 ✉️ Enviamos um link de redefinição de senha pro seu e-mail! Verifique sua caixa de entrada.
@@ -774,11 +838,19 @@ function AppInner() {
           </div>
         ) : activeTab === 'hoje' ? (
           pendingByCategory.length === 0 ? (
-            <div className="empty-state">
-              <div className="emoji">✅</div>
-              <div className="text">Tudo no carrinho!</div>
-              <div className="text" style={{ marginTop: 4 }}>Boas compras!</div>
-            </div>
+            totalCount === 0 ? (
+              <div className="empty-state">
+                <div className="emoji">🧺</div>
+                <div className="text">Sua lista está vazia</div>
+                <div className="text" style={{ marginTop: 4 }}>Adicione um item acima pra começar.</div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <div className="emoji">✅</div>
+                <div className="text">Tudo no carrinho!</div>
+                <div className="text" style={{ marginTop: 4 }}>Boas compras!</div>
+              </div>
+            )
           ) : (
             pendingByCategory.map(({ cat, items: catItems, total }) => (
               <div className="category" key={cat.key}>
@@ -889,12 +961,20 @@ function AppInner() {
 
       <footer>
         <div className="footer-buttons">
-          <button className="logout-btn" onClick={logout}>
+          <button className="logout-btn" onClick={handleLogoutClick}>
             Sair da conta
           </button>
+          {activeTab !== 'rotina' && checkedCount > 0 && (
+            <button className="reset-btn" onClick={unmarkAllChecked}>
+              Desmarcar concluídos
+            </button>
+          )}
           {activeTab !== 'rotina' && (
-            <button className="reset-btn" onClick={resetAll}>
-              Limpar marcações
+            <button
+              className={`reset-btn${clearListArmed ? ' reset-btn-confirming' : ''}`}
+              onClick={handleClearListClick}
+            >
+              {clearListArmed ? 'Confirmar limpeza da lista' : 'Limpar lista do dia'}
             </button>
           )}
         </div>
@@ -905,6 +985,45 @@ function AppInner() {
           Alterar senha
         </button>
       </footer>
+
+      {/* Logout confirmation modal (AUD-007) */}
+      {showLogoutConfirm && (
+        <div className="modal-backdrop" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="ios-modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="ios-modal-title">Sair da conta?</h2>
+            {logoutPendingCount === null ? (
+              <p>Verificando pendências...</p>
+            ) : logoutPendingCount > 0 ? (
+              <>
+                <p>
+                  Você tem {logoutPendingCount} {logoutPendingCount === 1 ? 'alteração' : 'alterações'} que ainda{' '}
+                  {logoutPendingCount === 1 ? 'não sincronizou' : 'não sincronizaram'}. Sair agora vai descartá-la{logoutPendingCount === 1 ? '' : 's'}.
+                </p>
+                <button
+                  className="login-submit-btn"
+                  onClick={handleSyncNowBeforeLogout}
+                  disabled={syncingBeforeLogout}
+                >
+                  {syncingBeforeLogout ? 'Sincronizando...' : 'Sincronizar agora'}
+                </button>
+                <button className="reset-btn" onClick={handleConfirmLogout}>
+                  Sair mesmo assim (descartar)
+                </button>
+              </>
+            ) : (
+              <p>Tudo sincronizado. Tem certeza que quer sair?</p>
+            )}
+            {logoutPendingCount === 0 && (
+              <button className="login-submit-btn" onClick={handleConfirmLogout}>
+                Sair
+              </button>
+            )}
+            <button className="login-forgot-link" onClick={() => setShowLogoutConfirm(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Change password modal */}
       {showChangePassword && (
@@ -957,15 +1076,15 @@ function AppInner() {
             <div className="ios-modal-steps">
               <div className="ios-modal-step">
                 <span className="ios-modal-step-number">1</span>
-                <span>Toque no botão de **Compartilhar** 📤 na barra inferior do Safari.</span>
+                <span>Toque no botão de <strong>Compartilhar</strong> 📤 na barra inferior do Safari.</span>
               </div>
               <div className="ios-modal-step">
                 <span className="ios-modal-step-number">2</span>
-                <span>Role a lista de opções para baixo e selecione **Adicionar à Tela de Início** ➕.</span>
+                <span>Role a lista de opções para baixo e selecione <strong>Adicionar à Tela de Início</strong> ➕.</span>
               </div>
               <div className="ios-modal-step">
                 <span className="ios-modal-step-number">3</span>
-                <span>Confirme o nome do aplicativo e toque em **Adicionar** no canto superior direito.</span>
+                <span>Confirme o nome do aplicativo e toque em <strong>Adicionar</strong> no canto superior direito.</span>
               </div>
             </div>
             <button className="ios-modal-close-btn" onClick={() => setShowIosInstallModal(false)}>
