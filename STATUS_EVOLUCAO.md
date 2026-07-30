@@ -92,7 +92,7 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Sprints concluídas | 4 de 7 (Sprint 0, Sprint 1, Sprint 2, Sprint 3) |
 | Achados resolvidos | 9 de 26 (AUD-008, AUD-015, AUD-016, AUD-001, AUD-003, AUD-004, AUD-009, AUD-002, AUD-012). AUD-005/AUD-006 parcialmente mitigados — não contados como resolvidos. AUD-011 permanece aberto (só a parte de política do motor foi tratada; o editor completo é escopo da Sprint 4) |
 | Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `d7ae52e` (run `30544713438`, aprovado) — Sprint 3 ainda não teve seu próprio run confirmado nesta atualização |
+| Último deploy estável conhecido | commit `422dc54` (run `30548131582`, aprovado) |
 | Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (49 passaram, 0 vermelhos, 0 pendentes); build aprovado; `pnpm audit --prod` sem vulnerabilidades |
 
 ### Resumo por prioridade
