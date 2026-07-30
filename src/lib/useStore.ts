@@ -29,6 +29,11 @@ export function useDayState() {
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
 
   const todayKey = getTodayKey();
+  // Set when Supabase reports the PASSWORD_RECOVERY event — i.e. the user
+  // just landed here from an "esqueci minha senha" email link. Without
+  // surfacing this, the recovery link silently logs the user in and the
+  // "definir nova senha" step stays hidden behind the footer button.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   // ─── Supabase Auth listener ─────────────────────────────────────────
   useEffect(() => {
@@ -39,8 +44,9 @@ export function useDayState() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
       if (!session) {
         setState(getTodayItems());
         setLoading(false);
@@ -627,6 +633,7 @@ export function useDayState() {
     signInWithPassword,
     sendPasswordReset,
     updatePassword,
+    passwordRecovery,
     logout,
     state,
     loading,

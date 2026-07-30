@@ -90,6 +90,7 @@ export default function App() {
     signInWithPassword,
     sendPasswordReset,
     updatePassword,
+    passwordRecovery,
     logout,
     state,
     loading: stateLoading,
@@ -135,6 +136,19 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [changePasswordStatus, setChangePasswordStatus] = useState<'idle' | 'saving' | 'error'>('idle');
+
+  // Landing here via an "esqueci minha senha" email link fires
+  // PASSWORD_RECOVERY — surface the "definir nova senha" step right away
+  // instead of leaving it hidden behind the footer button. Adjusted during
+  // render (comparing against the previous value) rather than in a
+  // useEffect — this repo's lint rules flag a bare setState call inside an
+  // effect body as a likely-avoidable render (see RotinaTab.tsx for the
+  // same pattern).
+  const [prevPasswordRecovery, setPrevPasswordRecovery] = useState(passwordRecovery);
+  if (passwordRecovery !== prevPasswordRecovery) {
+    setPrevPasswordRecovery(passwordRecovery);
+    if (passwordRecovery) setShowChangePassword(true);
+  }
 
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<ItemRecord[]>([]);
@@ -451,6 +465,7 @@ export default function App() {
                   className="login-input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                 />
                 {!forgotMode && (
@@ -460,6 +475,7 @@ export default function App() {
                     className="login-input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                     required
                   />
                 )}
@@ -876,6 +892,7 @@ export default function App() {
                 className="login-input"
                 value={newPassword}
                 onChange={(e) => { setNewPassword(e.target.value); setChangePasswordStatus('idle'); }}
+                autoComplete="new-password"
                 required
                 minLength={6}
               />
@@ -885,6 +902,7 @@ export default function App() {
                 className="login-input"
                 value={newPasswordConfirm}
                 onChange={(e) => { setNewPasswordConfirm(e.target.value); setChangePasswordStatus('idle'); }}
+                autoComplete="new-password"
                 required
                 minLength={6}
               />
