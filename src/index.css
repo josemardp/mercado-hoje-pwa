@@ -756,6 +756,35 @@ footer {
 .login-input:focus {
   border-color: var(--green);
 }
+.login-password-wrap {
+  position: relative;
+}
+.login-password-wrap .login-input {
+  padding-right: 44px;
+}
+.login-password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.login-password-toggle:hover {
+  color: var(--ink);
+}
+.login-password-toggle:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 .login-submit-btn {
   width: 100%;
   background: var(--green);
