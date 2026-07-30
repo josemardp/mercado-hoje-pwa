@@ -70,6 +70,16 @@ export default function RotinaTab({
     if (trackPathRef.current) setPathLen(trackPathRef.current.getTotalLength());
   }, []);
 
+  // Forces a periodic re-render in Agenda mode so the ambient sky (real
+  // clock, see targetPreset below) actually drifts over time even if you
+  // just leave the tab open without touching anything.
+  const [, forceAmbientTick] = useState(0);
+  useEffect(() => {
+    if (mode !== 'agenda') return;
+    const interval = setInterval(() => forceAmbientTick(t => t + 1), 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [mode]);
+
   const doneCount = useMemo(() => ROTINA_STEPS.filter(s => done[s.id]).length, [done]);
   const totalCount = ROTINA_STEPS.length;
   const allDone = doneCount === totalCount;
@@ -85,10 +95,16 @@ export default function RotinaTab({
   }, [done]);
   const focus = manualFocus !== null ? manualFocus : autoFocus;
 
-  // Sky follows the focused step's own tag first; only falls back to the
-  // real clock when there's no step to focus (celebration screen).
+  // Sky follows the focused step's own tag first; falls back to the real
+  // clock when there's no step to focus (celebration screen) — and in
+  // Agenda mode, always the real clock, since every Agenda task already
+  // carries its own real scheduled time, unlike the fixed routine's
+  // abstract per-step period tags.
   const currentStep: RotinaStep | undefined = ROTINA_STEPS[focus];
-  const targetPreset = allDone || !currentStep ? getAmbientSkyPreset() : getSkyPresetForStep(currentStep);
+  const targetPreset =
+    mode === 'agenda' || allDone || !currentStep
+      ? getAmbientSkyPreset()
+      : getSkyPresetForStep(currentStep);
 
   // Crossfade the background as targetPreset changes — "adjust state when a
   // value changes", done during render (React's sanctioned pattern for

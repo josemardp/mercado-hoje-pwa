@@ -82,21 +82,38 @@ export function generateSchedule(
     return Math.max(FLOOR_MINUTES, Math.round(task.estimatedMinutes * scale));
   };
 
+  // Anchors are placed chronologically no matter where you typed them in the
+  // list — but a non-anchored task still needs to land in the "slot" you
+  // intended (before/after a given appointment). That slot is captured by
+  // how many anchors preceded it in your ORIGINAL order, not by anchor time:
+  // e.g. "Planejar (flex), Reunião 18h (fixo), Comprar (flex), Consulta 10h
+  // (fixo)" means Planejar goes before both appointments and Comprar goes
+  // between them, regardless of Consulta's 10h sorting earlier than 18h.
+  let anchorsSeenSoFar = 0;
+  const gapIndexByTaskId = new Map<string, number>();
+  for (const task of undone) {
+    if (task.fixed && task.fixedStart) {
+      anchorsSeenSoFar++;
+    } else {
+      gapIndexByTaskId.set(task.id, anchorsSeenSoFar);
+    }
+  }
+
+  const sortedAnchors = fixedAnchored
+    .slice()
+    .sort((a, b) => toMinutes(a.fixedStart!) - toMinutes(b.fixedStart!));
+
+  const others = undone.filter(t => !(t.fixed && t.fixedStart));
+  const gaps: SchedulableTask[][] = Array.from({ length: sortedAnchors.length + 1 }, () => []);
+  for (const task of others) {
+    gaps[gapIndexByTaskId.get(task.id)!].push(task);
+  }
+
   let cursor = windowStartMin;
   const placed: ScheduledTask[] = [];
 
-  for (const task of undone) {
-    if (task.fixed && task.fixedStart) {
-      const anchorStart = toMinutes(task.fixedStart);
-      const anchorEnd = anchorStart + task.estimatedMinutes;
-      placed.push({
-        ...task,
-        scheduledStart: toHHMM(anchorStart),
-        scheduledEnd: toHHMM(anchorEnd),
-        allottedMinutes: task.estimatedMinutes,
-      });
-      cursor = Math.max(cursor, anchorEnd);
-    } else {
+  for (let gapIndex = 0; gapIndex <= sortedAnchors.length; gapIndex++) {
+    for (const task of gaps[gapIndex]) {
       const duration = allotmentFor(task);
       const start = cursor;
       const end = cursor + duration;
@@ -107,6 +124,19 @@ export function generateSchedule(
         allottedMinutes: duration,
       });
       cursor = end;
+    }
+
+    const anchor = sortedAnchors[gapIndex];
+    if (anchor) {
+      const anchorStart = toMinutes(anchor.fixedStart!);
+      const anchorEnd = anchorStart + anchor.estimatedMinutes;
+      placed.push({
+        ...anchor,
+        scheduledStart: toHHMM(anchorStart),
+        scheduledEnd: toHHMM(anchorEnd),
+        allottedMinutes: anchor.estimatedMinutes,
+      });
+      cursor = Math.max(cursor, anchorEnd);
     }
   }
 
