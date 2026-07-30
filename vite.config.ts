@@ -24,6 +24,13 @@ const manifest: Partial<ManifestOptions> = {
       url: '/mercado-hoje-pwa/?action=add-item',
       icons: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
     },
+    {
+      name: 'Rotina',
+      short_name: 'Rotina',
+      description: 'Abre direto na aba Rotina',
+      url: '/mercado-hoje-pwa/?tab=rotina',
+      icons: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    },
   ],
   icons: [
     {

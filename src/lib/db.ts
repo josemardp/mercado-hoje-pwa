@@ -53,11 +53,69 @@ export interface SyncQueueEntry {
 // are surfaced in the UI instead of failing silently forever.
 export const MAX_SYNC_ATTEMPTS = 5;
 
+// ─── Rotina tab records ─────────────────────────────────────────────
+// Kept structurally separate from ItemRecord/DayItemRecord/SyncQueueEntry:
+// Rotina has no growable catalog (steps are fixed in rotinaSteps.ts) and no
+// postponed/carry-over concept, so reusing the grocery shapes would just
+// carry a bunch of always-null fields. See rotinaDb.ts for the sync logic.
+export interface RotinaStepStateRecord {
+  dayKey: string; // "YYYY-MM-DD", same format as getTodayKey()
+  stepId: string; // stable slug from rotinaSteps.ts — never renamed once shipped
+  done: boolean;
+  updatedAt: number; // timestamp for LWW merge
+  userId: string;
+}
+
+export interface RotinaSyncQueueEntry {
+  id?: number;
+  type: 'complete' | 'uncomplete' | 'reset';
+  dayKey: string;
+  stepId?: string;
+  updatedAt?: number;
+  timestamp: number;
+  attemptCount?: number;
+}
+
+// ─── Agenda mode records ────────────────────────────────────────────
+// Unlike grocery items (growable named catalog) or rotina steps (fixed
+// slugs), an agenda task is a single self-contained per-day row. Deletion is
+// modeled as just another field (`deleted`) synced through the same
+// conditional "newer wins" RPC as every other edit, instead of a real row
+// delete — so a delete can never race-resurrect a newer edit (or vice
+// versa) without extra cutoff-timestamp machinery. See agendaDb.ts.
+export interface AgendaTaskRecord {
+  id: string; // uuid v4
+  dayKey: string; // "YYYY-MM-DD" — agenda tasks never carry over to the next day
+  title: string;
+  estimatedMinutes: number; // baseline — only changed by the estimator or an explicit user edit, never by the scheduler
+  fixed: boolean; // true = immovable commitment (appointment/meeting), duration never compressed
+  fixedStart?: string; // "HH:MM" — only set when the exact clock time is known
+  order: number; // insertion order — the placement order the scheduler uses
+  scheduledStart?: string; // "HH:MM", written by generateSchedule()
+  scheduledEnd?: string; // "HH:MM", written by generateSchedule()
+  done: boolean;
+  deleted: boolean; // soft-delete tombstone
+  updatedAt: number;
+  userId: string;
+}
+
+export interface AgendaSyncQueueEntry {
+  id?: number;
+  type: 'upsert'; // a single type is enough — every mutation just re-reads and pushes the whole row
+  taskId: string;
+  timestamp: number;
+  attemptCount?: number;
+}
+
 // ─── Dexie local DB ────────────────────────────────────────────────
 class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
   dayItems!: Table<DayItemRecord, [string, string]>; // compound key [dayKey, itemId]
   syncQueue!: Table<SyncQueueEntry, number>;
+  rotinaStepState!: Table<RotinaStepStateRecord, [string, string]>; // compound key [dayKey, stepId]
+  rotinaSyncQueue!: Table<RotinaSyncQueueEntry, number>;
+  agendaTasks!: Table<AgendaTaskRecord, string>;
+  agendaSyncQueue!: Table<AgendaSyncQueueEntry, number>;
 
   constructor() {
     super('MercadoHoje');
@@ -65,6 +123,14 @@ class MercadoDatabase extends Dexie {
       items: 'id, name, category, lastUsed, useCount, userId',
       dayItems: '[dayKey+itemId], dayKey, itemId, checked, postponed, inToday, updatedAt, userId',
       syncQueue: '++id, type, dayKey, timestamp',
+    });
+    this.version(3).stores({
+      rotinaStepState: '[dayKey+stepId], dayKey, stepId, done, updatedAt, userId',
+      rotinaSyncQueue: '++id, type, dayKey, timestamp',
+    });
+    this.version(4).stores({
+      agendaTasks: 'id, dayKey, userId, order, done, deleted, updatedAt',
+      agendaSyncQueue: '++id, type, taskId, timestamp',
     });
   }
 }
