@@ -17,9 +17,9 @@ const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5L9.5 18L
 type TabKey = 'hoje' | 'concluidos' | 'proximo' | 'rotina';
 
 const TABS: { key: TabKey; label: string; emoji: string }[] = [
-  { key: 'hoje', label: 'Hoje', emoji: '🛒' },
-  { key: 'concluidos', label: 'Concluídos', emoji: '✅' },
-  { key: 'proximo', label: 'Próximo', emoji: '🕒' },
+  { key: 'hoje', label: 'Compras hoje', emoji: '🛒' },
+  { key: 'concluidos', label: 'Compras concluídas', emoji: '✅' },
+  { key: 'proximo', label: 'Próximas compras', emoji: '🕒' },
   { key: 'rotina', label: 'Rotina', emoji: '🌅' },
 ];
 
