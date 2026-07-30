@@ -390,9 +390,6 @@ export default function App() {
   if (!user && !stateLoading) {
     return (
       <div className="page">
-        <div className="flags" aria-hidden="true">
-          {Array.from({ length: 15 }).map((_, i) => <span key={i} />)}
-        </div>
         <div className="login-wrap">
           <div className="login-card">
             <h1 className="login-title">Mercado</h1>
@@ -424,9 +421,6 @@ export default function App() {
 
   return (
     <div className="page">
-      <div className="flags" aria-hidden="true">
-        {Array.from({ length: 15 }).map((_, i) => <span key={i} />)}
-      </div>
 
       {activeTab !== 'rotina' && (
       <header>

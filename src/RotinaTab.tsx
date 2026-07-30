@@ -18,9 +18,9 @@ const STAR_POSITIONS = [
 
 function greetingText(): string {
   const h = new Date().getHours();
-  if (h < 12) return 'Bom dia, Capitão';
-  if (h < 18) return 'Boa tarde, Capitão';
-  return 'Boa noite, Capitão';
+  if (h < 12) return 'Bom dia, Josemar';
+  if (h < 18) return 'Boa tarde, Josemar';
+  return 'Boa noite, Josemar';
 }
 
 function firstIncomplete(done: Record<string, boolean>, fromIndex: number): number {
@@ -271,7 +271,7 @@ export default function RotinaTab({
               <div className="rotina-step-count">MISSÃO CUMPRIDA</div>
               <div className="rotina-step-title">Rotina completa!</div>
               <div style={{ color: 'var(--rotina-ink-dim)', fontSize: 14, marginTop: -8 }}>
-                Capitão, o dia é seu.
+                Josemar, o dia é seu.
               </div>
               <button className="rotina-primary-btn" onClick={handleResetClick}>
                 {resetArmed ? 'Confirmar reinício' : 'Reiniciar rotina'}
