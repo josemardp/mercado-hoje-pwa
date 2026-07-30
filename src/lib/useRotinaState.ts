@@ -6,6 +6,7 @@ import {
   syncRotinaStepToSupabase, processRotinaSyncQueue, MAX_SYNC_ATTEMPTS,
 } from './rotinaDb';
 import { getTodayKey } from './categories';
+import { logError, logQueueHealth } from './logger';
 
 export interface RotinaStateData {
   done: Record<string, boolean>;
@@ -68,6 +69,7 @@ export function useRotinaState(user: User | null) {
       const entries = allEntries.filter(e => belongsToActiveUser(e) && (e.attemptCount || 0) < MAX_SYNC_ATTEMPTS);
 
       if (entries.length > 0) {
+        logQueueHealth({ domain: 'rotina', pending: entries.length, oldestTimestamp: entries[0].timestamp });
         setSyncStatus('syncing');
         const successIds = await processRotinaSyncQueue(user.id, entries);
 
@@ -179,7 +181,7 @@ export function useRotinaState(user: User | null) {
         if (cancelled) return;
         setState({ done });
       } catch (err) {
-        console.error('Failed to load rotina state:', err);
+        logError('Failed to load rotina state', err);
       } finally {
         if (!cancelled) setLoading(false);
       }

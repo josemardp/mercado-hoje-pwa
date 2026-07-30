@@ -1,4 +1,5 @@
 import { db, supabase, MAX_SYNC_ATTEMPTS, resetDayDomain, type RotinaStepStateRecord, type RotinaSyncQueueEntry } from './db';
+import { logSyncFailure, logReconciliation } from './logger';
 
 /**
  * Load today's Rotina step state from Supabase for a specific user/day.
@@ -93,6 +94,7 @@ async function reconcileLocalRotinaStepFromRemote(dayKey: string, stepId: string
       userId: canonical.user_id as string,
     });
     window.dispatchEvent(new CustomEvent('mh:rotina-reconciled', { detail: { stepId } }));
+    logReconciliation('rotina', { dayKey, stepId });
   }
 }
 
@@ -163,7 +165,7 @@ export async function processRotinaSyncQueue(
         }
       }
     } catch (err) {
-      console.error('Failed to process rotina sync queue entry:', entry, err);
+      logSyncFailure('Failed to process rotina sync queue entry', entry, err);
       if (entry.id != null) {
         await db.rotinaSyncQueue.update(entry.id, { attemptCount: (entry.attemptCount || 0) + 1 });
       }

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logSyncFailure } from './logger';
 
 // ─── Supabase config ───────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -740,7 +741,7 @@ export async function processSyncQueue(
         }
       }
     } catch (err) {
-      console.error('Failed to process sync queue entry:', entry, err);
+      logSyncFailure('Failed to process sync queue entry', entry, err);
       if (entry.id != null) {
         await db.syncQueue.update(entry.id, { attemptCount: (entry.attemptCount || 0) + 1 });
       }

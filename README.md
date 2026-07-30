@@ -1,37 +1,20 @@
-# Mercado de Hoje
+# Meu Diário
 
-Lista de compras pessoal, offline-first, instalável como PWA em Android e iOS.
+App pessoal, offline-first, instalável como PWA em Android e iOS, com três módulos:
+
+- **Compras**: lista diária de mercado, com autocomplete por frequência e categorização automática.
+- **Rotina**: checklist fixo de 14 passos da rotina matinal (medicação, higiene, trabalho).
+- **Agenda**: planejador do dia — você lista as tarefas soltas e o tempo disponível, o app monta um horário automaticamente, comprimindo tarefas flexíveis e respeitando compromissos fixos.
 
 **[Acessar o app](https://josemardp.github.io/mercado-hoje-pwa/)**
 
 ---
 
-## O que o app faz
-
-- **Lista diária**: adicione itens digitando; a cada dia novo a lista começa vazia.
-- **Autocomplete por frequência**: sugere itens já usados antes, ordenados por uso.
-- **Categorização automática**: novos itens são classificados localmente (dicionário em português). Categorias ficam salvas para a próxima vez.
-- **Correção de categoria**: ao adicionar um item novo, o app permite corrigir a categoria sugerida.
-- **Marcar como comprado**: item marcado vai para "Concluídos" com feedback tátil (vibração) e visual.
-- **Adiar para amanhã**: cada item pendente tem um botão 🕒; itens adiados aparecem automaticamente no dia seguinte.
-- **Transição automática de dia**: quando o dia vira, itens adiados voltam para "Hoje" automaticamente.
-- **Offline-first**: funciona sem internet via IndexedDB (Dexie). Ao reconectar, sincroniza com Supabase.
-- **Sincronização multi-dispositivo**: dados persistem no Supabase via autenticação real. RLS garante que apenas você acessa seus dados.
-- **Instalável**: pode ser adicionado à tela inicial no Android (botão automático) e iOS (instrução passo-a-passo embutida no app).
-- **Deploy automático**: qualquer push na branch `main` publica automaticamente via GitHub Actions.
-
----
-
 ## Autenticação
 
-O app usa **Supabase Auth com Magic Link** (link enviado por e-mail). Não há senha.
+E-mail + senha via **Supabase Auth**. A tela de login também oferece "Esqueci minha senha" (link de redefinição por e-mail) e um botão de mostrar/ocultar senha.
 
-- Na primeira visita, o app exibe uma tela de login.
-- Insira seu e-mail e clique em "Receber Link de Acesso".
-- Verifique seu e-mail e clique no link recebido.
-- A sessão persiste localmente; você só precisa fazer login uma vez por dispositivo.
-
-As políticas de RLS no Postgres verificam `auth.uid()` diretamente — sem token compartilhado, sem variável de sessão via RPC.
+As políticas de RLS no Postgres verificam `auth.uid()` diretamente em toda tabela — sem token compartilhado, sem variável de sessão via RPC.
 
 ---
 
@@ -42,39 +25,64 @@ As políticas de RLS no Postgres verificam `auth.uid()` diretamente — sem toke
 | React 19 + TypeScript | Interface e lógica |
 | Vite 8 | Build e dev server |
 | Dexie (IndexedDB) | Banco de dados local (offline-first) |
-| Supabase (PostgreSQL) | Backend remoto + autenticação (Magic Link) |
-| vite-plugin-pwa | Service worker, manifest e ícones |
-| Tailwind CSS 4 | Estilização |
-| GitHub Actions | Deploy automático para GitHub Pages |
+| Supabase (PostgreSQL) | Backend remoto + autenticação |
+| vite-plugin-pwa / Workbox | Service worker, manifest e ícones |
+| GitHub Actions | CI (lint/typecheck/test/audit/build) + deploy automático para GitHub Pages |
+
+`RotinaTab`/`AgendaPlanner` (e seu CSS) são carregados sob demanda (`React.lazy`) — só entram no bundle quando o usuário abre a aba Rotina.
 
 ---
 
-## Sincronização
+## Sincronização e conflitos
 
-Estratégia **offline-first com Last-Write-Wins (LWW) por linha**:
+Estratégia **offline-first com Last-Write-Wins (LWW) por linha**, replicada nos três módulos:
 
-1. Cada item do dia é uma linha independente em `mh_day_items` (não um blob JSON). Isso elimina condições de corrida entre dispositivos.
-2. Alterações locais são salvas imediatamente no IndexedDB.
-3. Se online, a mudança é enviada diretamente ao Supabase.
-4. Se offline, a operação entra em uma fila local. Ao reconectar, a fila processa cada operação individualmente — só remove da fila as que confirmaram sucesso no Supabase.
-5. Ao abrir o app em outro dispositivo, os estados local e remoto são mesclados linha a linha pelo `updated_at`.
-6. Itens adiados carregam para o dia seguinte automaticamente.
+1. Cada unidade de dado (item do dia, passo da rotina, tarefa da agenda) é uma linha independente, nunca um blob JSON — elimina condição de corrida entre dispositivos editando coisas diferentes.
+2. Alterações locais são salvas imediatamente no IndexedDB (Dexie). Se online, a mudança é enviada direto ao Supabase; se offline, entra numa fila local própria por módulo (`syncQueue`/`rotinaSyncQueue`/`agendaSyncQueue`).
+3. Toda escrita remota passa por uma função RPC condicional (`upsert_*_if_newer`) que compara `updated_at` no servidor antes de gravar — uma escrita mais antiga nunca sobrescreve uma mais recente. Quando a RPC rejeita (`applied = false`), o app busca a linha canônica e reconcilia o estado local/React na hora, em vez de ficar tentando de novo pra sempre.
+4. **Reset com tombstone**: "Limpar lista do dia"/reiniciar rotina grava um cutoff server-side (`mh_reset_cutoffs`, timestamp do próprio Postgres) por usuário+dia+domínio — um aparelho que estava offline no momento do reset não ressuscita dados antigos ao reconectar.
+5. `use_count` (frequência de uso de um item) só é incrementado por um caminho idempotente (`operation_id` único), nunca por uma escrita "absoluta" concorrente com o incremento.
+6. Reconectar/voltar o foco na aba dispara automaticamente um novo pull+merge e reprocessa a fila pendente (throttle de 30s).
+7. Compras: itens adiados carregam pro dia seguinte automaticamente. Rotina e Agenda são por-dia — não carregam histórico.
 
 ---
 
-## Deploy
+## Estrutura do banco de dados (Supabase)
 
-O deploy é automático via GitHub Actions (`.github/workflows/deploy.yml`).
+Todas as tabelas de dados do usuário usam `user_id UUID REFERENCES auth.users(id)` e RLS habilitado (`auth.uid() = user_id`).
 
-A cada push na branch `main`:
-1. O workflow instala as dependências com `pnpm`.
-2. Cria o `.env` a partir das secrets do repositório (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
-3. Executa `pnpm build`.
-4. Publica o conteúdo de `dist/` no GitHub Pages.
+| Tabela | Descrição |
+|---|---|
+| `mh_items` | Catálogo de itens de compras (nome, categoria, emoji, qty, use_count) |
+| `mh_day_items` | Estado diário de Compras (PK: user_id + day_key + item_id — checked, postponed, in_today) |
+| `mh_rotina_state` | Estado diário dos 14 passos da Rotina (PK: user_id + day_key + step_id — done) |
+| `mh_agenda_tasks` | Tarefas da Agenda por dia (título, duração estimada, fixo/flexível, horário gerado, concluída, tombstone de soft-delete) |
+| `mh_reset_cutoffs` | Cutoff de reset por usuário+dia+domínio (compras/rotina/agenda) — usado pelas RPCs condicionais pra rejeitar reinserção de dado apagado |
+| `mh_processed_operations` | Registro de `operation_id` já aplicados — garante que um incremento de `use_count` reenviado (retry offline) nunca é contado duas vezes |
 
-**Secrets necessários no repositório GitHub:**
-- `VITE_SUPABASE_URL` — URL do projeto Supabase
-- `VITE_SUPABASE_ANON_KEY` — Chave anon pública do Supabase
+**RPCs principais** (todas comparam `updated_at`/`p_updated_at` no servidor antes de gravar): `upsert_day_item_if_newer`, `upsert_rotina_step_if_newer`, `upsert_agenda_task_if_newer`, `update_item_category_if_newer`, `update_item_use_count_if_newer`, `upsert_item_reconcile_name`, `increment_use_count` (idempotente via `operation_id`), `reset_day_domain`, `get_reset_cutoff`.
+
+---
+
+## Exportar/backup dos dados
+
+No rodapé do app, "Exportar meus dados" baixa um `.json` com tudo que está salvo no Supabase pra aquela conta (catálogo de compras, estados diários, rotina e agenda), direto do navegador — não passa por nenhum servidor além do próprio Supabase.
+
+---
+
+## Segurança
+
+- Nenhum segredo em texto puro no código, `.env.example` ou histórico da branch `main`. A chave `anon` do Supabase é pública por design.
+- Acesso aos dados exige `auth.uid()`; sem login, toda operação falha por RLS.
+- CSP aplicada via `<meta http-equiv>` em `index.html` — GitHub Pages não serve headers HTTP customizados, então essa é a única forma de entregar CSP nesse hosting. Isso significa que `frame-ancestors` (proteção contra clickjacking) e `X-Content-Type-Options: nosniff` **não** têm efeito, pois são headers-only e não têm equivalente em `<meta>`. Ver decisão sobre hospedagem abaixo.
+- Console de produção nunca recebe nome de item, título de tarefa, categoria, e-mail ou token — `src/lib/logger.ts` filtra qualquer payload de erro/sync antes de logar (só sobrevivem ids, timestamps e contadores). Em desenvolvimento, o erro completo aparece normalmente.
+- Classificação de itens é 100% local (sem IA externa).
+
+### Sobre a hospedagem atual (GitHub Pages)
+
+GitHub Pages não permite configurar headers HTTP customizados, então X-Frame-Options/nosniff/Permissions-Policy reais (não via `<meta>`) não são possíveis nesse hosting. Para um app pessoal de baixo risco, sem conteúdo de terceiros embutido, isso foi avaliado e considerado um risco aceitável por ora — migrar pra um host com esse suporte (Cloudflare Pages, Netlify, Vercel) é uma mudança maior de infraestrutura (DNS, pipeline de deploy) que não foi feita nesta sprint; ver `STATUS_EVOLUCAO.md` pela decisão registrada.
+
+- **Incidente histórico**: uma versão anterior do projeto usava um `secret_token` compartilhado (em vez de autenticação real), e esse token chegou a ser commitado em texto puro. O esquema de `secret_token` foi completamente removido do banco e a branch `main` foi recriada sem esse histórico.
 
 ---
 
@@ -87,32 +95,36 @@ pnpm install
 # Criar .env local (não commitado)
 # Copie .env.example, renomeie para .env e preencha as variáveis
 
-pnpm dev        # modo desenvolvimento (http://localhost:5173)
-pnpm build      # build de produção
-pnpm lint       # lint com ESLint
-pnpm preview    # visualizar o build localmente
+pnpm dev             # modo desenvolvimento
+pnpm build           # build de produção (tsc -b && vite build)
+pnpm preview         # servir o build de produção localmente
+pnpm lint            # ESLint
+pnpm typecheck       # tsc --noEmit
+pnpm test            # Vitest (suite completa)
+pnpm test:coverage   # Vitest com cobertura
 ```
 
 ---
 
-## Estrutura do banco de dados (Supabase)
+## Deploy
 
-Todas as tabelas usam `user_id UUID REFERENCES auth.users(id)` e RLS habilitado com política `auth.uid() = user_id`.
+Automático via GitHub Actions (`.github/workflows/deploy.yml`) a cada push na branch `main`:
 
-| Tabela | Descrição |
-|---|---|
-| `mh_items` | Catálogo de itens (id UUID, nome, categoria, emoji, qty, use_count) |
-| `mh_day_items` | Estado diário por item (PK composta: user_id + day_key + item_id, checked, postponed, in_today) |
+1. Instala dependências com `pnpm --frozen-lockfile`.
+2. Roda lint, typecheck, testes e `pnpm audit --prod`.
+3. Sobe um Postgres descartável (`supabase start`) e valida a cadeia de migrations do zero.
+4. `pnpm build`.
+5. Publica `dist/` no GitHub Pages.
 
-A tabela `mh_sync_queue` foi removida — a fila de sincronização existe apenas localmente no IndexedDB.
+**Secrets necessários no repositório GitHub:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 
----
+### Runbook de rollback
 
-## Segurança
+**Front-end (GitHub Pages):**
+1. `git revert <commit-do-problema>` (nunca `git reset --hard` numa branch compartilhada) e push na `main` — o workflow reconstrói e republica automaticamente.
+2. Alternativa mais rápida: reabrir uma run anterior aprovada em GitHub Actions e usar "Re-run all jobs" — publica de novo o artefato daquele commit sem esperar um novo build.
 
-- Nenhum segredo está em texto puro no código, no `.env.example` ou no histórico da branch `main`.
-- A chave `anon` do Supabase é pública por design (é a chave de acesso não autenticado).
-- Acesso aos dados requer autenticação via `auth.uid()`. Sem login, todas as operações falham com erro de RLS — testado diretamente contra a API de produção (INSERT sem sessão retorna `42501`/RLS).
-- A API key da OpenAI foi removida completamente. Classificação de itens é feita localmente.
-- Todo escrita remota (direta ou pela fila offline) passa por funções RPC que comparam `updated_at` no servidor antes de sobrescrever, para que uma escrita mais antiga nunca apague uma mais recente.
-- **Incidente histórico**: uma versão anterior do projeto usava um `secret_token` compartilhado (em vez de autenticação real), e esse token chegou a ser commitado em texto puro. O esquema de `secret_token` foi completamente removido do banco (tabelas antigas derrubadas) e a branch `main` foi recriada sem esse histórico. Um artefato de build antigo com o token ainda podia existir na branch `gh-pages` (não usada pelo deploy atual, que roda via GitHub Actions) até a limpeza dessa branch.
+**Banco (Supabase):**
+- Este projeto não versiona migrations "down" — a estratégia sempre foi aditiva (nova tabela/coluna + cópia de dados, nunca alterar uma chave primária existente in-place; ver o incidente documentado em `STATUS_EVOLUCAO.md`, decisão D-015, sobre por que essa regra existe).
+- Reverter uma migration já aplicada em produção é uma operação manual, caso a caso: escrever o SQL inverso, testar contra `supabase start` local primeiro, e só então aplicar com `supabase db query --linked` — nunca direto em produção sem esse passo.
+- Antes de qualquer rollback de schema, rodar `supabase migration list` e comparar com `supabase_migrations.schema_migrations` pra confirmar exatamente o que está aplicado remotamente.

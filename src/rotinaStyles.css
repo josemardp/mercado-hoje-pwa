@@ -23,7 +23,7 @@ main.main-rotina {
   overflow: hidden;
   border-radius: 26px 26px 0 0;
   color: var(--rotina-ink);
-  font-family: 'Inter', 'Nunito Sans', sans-serif;
+  font-family: 'Nunito Sans', sans-serif;
 }
 
 .rotina-bg-layer {

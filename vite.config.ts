@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import type { ManifestOptions } from 'vite-plugin-pwa'
 
@@ -65,7 +64,6 @@ export default defineConfig({
   base: '/mercado-hoje-pwa/',
   plugins: [
     react(),
-    tailwindcss(),
     VitePWA({
       // 'prompt' (not 'autoUpdate') so a new version waits for the user to
       // confirm via the in-app banner instead of silently swapping assets
