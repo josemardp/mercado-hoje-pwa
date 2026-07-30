@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 30/07/2026 (sessão de execução da Sprint 0)
+**Última atualização:** 30/07/2026 (sessão de execução da Sprint 0 — encerramento)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -83,17 +83,17 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 0 QUASE CONCLUÍDA (1 BLOQUEIO EXTERNO)` |
-| Fase atual | Sprint 0 implementada (testes, CI, ambiente local, migration duplicada); aguardando confirmação do primeiro run real do CI |
-| Sprint ativa | Sprint 0 — Rede de segurança e baseline reproduzível |
-| Foco atual | Confirmar resultado do primeiro run do workflow de CI atualizado; decidir staging (B-002) |
+| Situação geral | `EM EXECUÇÃO — SPRINT 0 CONCLUÍDA` |
+| Fase atual | Sprint 0 concluída (testes, CI, ambiente local, migration duplicada); primeiro run real do CI confirmado aprovado |
+| Sprint ativa | Sprint 1 — Integridade de reset e versão dos dados |
+| Foco atual | Iniciar Sprint 1: aprovar modelo de versão server-side (S1-01) e tombstone/cutoff de reset (S1-02) |
 | Próxima entrega | Sprint 1 — tombstone/cutoff de reset (AUD-001, AUD-005) |
-| Progresso do plano | ~7% (Sprint 0 quase completa; 6 sprints restantes) |
-| Sprints concluídas | 0 de 7 (Sprint 0 em validação final) |
-| Achados resolvidos | 2 de 26 (AUD-008, AUD-015). Mais 2 em validação (AUD-016, AUD-026 parcial). 4 outros já têm teste de regressão vermelho documentando o bug (AUD-001, AUD-002, AUD-004, AUD-009) — reprodução criada, correção ainda não |
-| Bloqueios ativos | 1 (B-001 resolvido nesta sessão; B-002 permanece aberto) |
-| Último deploy estável conhecido | commit `7610411` |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (32 passaram, 5 vermelhos esperados, 1 pendente); build aprovado; `pnpm audit --prod` sem vulnerabilidades |
+| Progresso do plano | ~9% (Sprint 0 completa; 6 sprints restantes) |
+| Sprints concluídas | 1 de 7 (Sprint 0) |
+| Achados resolvidos | 3 de 26 (AUD-008, AUD-015, AUD-016). 4 outros já têm teste de regressão vermelho documentando o bug (AUD-001, AUD-002, AUD-004, AUD-009) — reprodução criada, correção ainda não |
+| Bloqueios ativos | 1 (B-001 e B-003 resolvidos nesta sessão; B-002 permanece aberto) |
+| Último deploy estável conhecido | commit `470be73` (run `30539728743`, aprovado) |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (32 passaram, 5 vermelhos esperados, 1 pendente); build aprovado; `pnpm audit --prod` sem vulnerabilidades; CI real do GitHub Actions aprovado de ponta a ponta |
 
 ### Resumo por prioridade
 
@@ -102,9 +102,9 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 | Crítico | 2 | 0 | 2 |
 | Alto | 7 | 1 | 6 |
 | Médio/Alto | 1 | 0 | 1 |
-| Médio | 11 | 1 | 10 |
+| Médio | 11 | 2 | 9 |
 | Baixo | 5 | 0 | 5 |
-| **Total** | **26** | **2** | **24** |
+| **Total** | **26** | **3** | **23** |
 
 ### Critérios de cálculo
 
@@ -133,8 +133,8 @@ Não iniciar as mudanças de sincronização da Sprint 1 sem a suíte mínima da
 
 ### Sprint 0 — Rede de segurança e baseline reproduzível
 
-**Estado:** `EM VALIDAÇÃO`
-**Progresso:** 8/9 — 89%
+**Estado:** `CONCLUÍDA`
+**Progresso:** 9/9 — 100%
 **Objetivo:** criar testes e gates antes de alterar sincronização e schema.
 **Gate de entrada:** responsável definido, repositório limpo e acesso ao Supabase de staging.
 **Gate de saída:** clone limpo reproduz ambiente; CI bloqueia regressões; estratégia da migration duplicada está aprovada.
@@ -145,17 +145,15 @@ Não iniciar as mudanças de sincronização da Sprint 1 sem a suíte mínima da
 | S0-02 | Testes das funções puras e merges LWW | `CONCLUÍDO` | `src/lib/__tests__/agendaScheduler.test.ts`, `agendaDurationEstimator.test.ts`, `lwwMerges.test.ts`, `classifyCategory.test.ts`, `categories.test.ts` — 32 casos aprovados. |
 | S0-03 | Testes Dexie com `fake-indexeddb` | `CONCLUÍDO` | `src/lib/__tests__/dexie.test.ts`; `src/test/setup.ts` carrega `fake-indexeddb/auto`. |
 | S0-04 | Reproduzir AUD-001 a AUD-004 em testes vermelhos | `CONCLUÍDO` | 5 casos `it.fails` (AUD-001, AUD-002, AUD-004×2, AUD-009 como bônus) + 1 `describe.todo` (AUD-003, exige mock de duas chamadas de rede concorrentes — não implementado nesta sessão). |
-| S0-05 | CI com lint, typecheck, testes, build e audit | `BLOQUEADO` | `.github/workflows/deploy.yml` reescrito (valida secrets, lint, typecheck, test, `pnpm audit --prod`, build, `supabase start`/`stop`) e aprovado localmente, mas o `git push` foi **recusado pelo GitHub**: o token usado nesta sessão não tem o escopo OAuth `workflow`, exigido pra alterar arquivos em `.github/workflows/`. Ver B-003. |
+| S0-05 | CI com lint, typecheck, testes, build e audit | `CONCLUÍDO` | `.github/workflows/deploy.yml` reescrito (valida secrets, lint, typecheck, test, `pnpm audit --prod`, build, `supabase start`/`stop`) e enviado após reautenticar o `gh` com o escopo `workflow` (ver B-003, fechado). Run real `30539728743` (commit `470be73`) aprovado de ponta a ponta: lint, typecheck, test, audit, build, Supabase CLI, validação de migrations e deploy — todos verdes. |
 | S0-06 | Fixar Node, pnpm, lockfile e validar env | `CONCLUÍDO` | `package.json`: `engines.node >=22`, `packageManager: pnpm@10.33.0`; CI usa `--frozen-lockfile` e falha se os secrets do Supabase estiverem vazios. |
 | S0-07 | Corrigir Supabase local, seed e redirects | `CONCLUÍDO` | `supabase/config.toml`: seed desabilitado (não existe `seed.sql`, o catálogo é semeado em runtime); `site_url`/`additional_redirect_urls` corrigidos de `:3000` pra `:5173` (porta real do Vite). `sendPasswordReset` agora usa `import.meta.env.BASE_URL` em vez de `/mercado-hoje-pwa/` fixo. |
-| S0-08 | Validar migrations em banco descartável | `EM VALIDAÇÃO` | Etapa adicionada ao CI (`supabase start`/`stop`, Docker disponível no runner `ubuntu-latest`); **não pôde ser executada localmente** nesta sessão — a máquina de desenvolvimento não tem Docker Desktop instalado (`supabase db dump` já havia falhado antes por esse motivo). Confirmar no primeiro run do Actions. |
+| S0-08 | Validar migrations em banco descartável | `CONCLUÍDO` | Etapa rodou no CI (`supabase start`/`stop`, Docker do runner `ubuntu-latest`) no run `30539728743` — passou aplicando toda a cadeia de migrations do zero. Continua não podendo ser executada localmente (sem Docker Desktop nesta máquina — ver B-002). |
 | S0-09 | Auditar e decidir correção da versão duplicada `20260727` | `CONCLUÍDO` | Ver B-001 abaixo e decisão D-005. |
 
 #### Próxima ação da Sprint 0
 
-1. Após este push, conferir o resultado real do workflow do GitHub Actions (S0-05/S0-08) — se passar, marcar a Sprint 0 como `CONCLUÍDA` e abrir o gate G1.
-2. Decidir B-002 (staging Supabase — instalar Docker Desktop na máquina de desenvolvimento ou criar um segundo projeto Supabase isolado).
-3. Com o gate G1 aprovado, iniciar a Sprint 1 (tombstone/cutoff de reset).
+Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próximos passos da Sprint 1.
 
 ### Sprint 1 — Integridade de reset e versão dos dados
 
@@ -285,7 +283,7 @@ Não iniciar as mudanças de sincronização da Sprint 1 sem a suíte mínima da
 | AUD-013 — persistência por tecla | Médio | 4 | `NÃO INICIADO` | — |
 | AUD-014 — update oculto na Rotina | Médio | 5 | `NÃO INICIADO` | — |
 | AUD-015 — ambiente não reproduzível | Médio | 0 | `CONCLUÍDO` | Seed desabilitado (`db.seed.enabled=false`, não existe `seed.sql`); `site_url`/`additional_redirect_urls` corrigidos pra `:5173`; `sendPasswordReset` usa `import.meta.env.BASE_URL` em vez de caminho fixo; CI agora falha se `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` estiverem vazios. |
-| AUD-016 — CI incompleto | Médio | 0 | `EM VALIDAÇÃO` | `.github/workflows/deploy.yml` agora roda lint, typecheck, test, `pnpm audit --prod`, build e validação de migrations antes do deploy; `packageManager` fixado. Falta confirmar o primeiro run real. |
+| AUD-016 — CI incompleto | Médio | 0 | `CONCLUÍDO` | `.github/workflows/deploy.yml` agora roda lint, typecheck, test, `pnpm audit --prod`, build e validação de migrations antes do deploy; `packageManager` fixado. Primeiro run real (`30539728743`) aprovado de ponta a ponta. |
 | AUD-017 — acessibilidade interna | Médio | 5 | `NÃO INICIADO` | — |
 | AUD-018 — controles/layout Agenda | Médio | 5 | `NÃO INICIADO` | — |
 | AUD-019 — dados pessoais em logs | Médio | 6 | `NÃO INICIADO` | — |
@@ -302,7 +300,7 @@ Não iniciar as mudanças de sincronização da Sprint 1 sem a suíte mínima da
 | Gate | Estado | Condição para aprovação | Evidência |
 |---|---|---|---|
 | G0 — baseline | `APROVADO` | lint, build e deploy da baseline passam | commit `7610411`; workflow `30510848715` |
-| G1 — testes/CI | `EM VALIDAÇÃO` | Sprint 0 concluída | Testes/CI implementados e aprovados localmente; falta confirmar o primeiro run real do Actions após este push. |
+| G1 — testes/CI | `APROVADO` | Sprint 0 concluída | Testes/CI implementados e aprovados localmente e no run real do Actions (`30539728743`, commit `470be73`). |
 | G2 — integridade de dados | `PENDENTE` | Sprints 1 e 2 concluídas | — |
 | G3 — Agenda correta | `PENDENTE` | Sprint 3 concluída | — |
 | G4 — UX segura | `PENDENTE` | Sprint 4 concluída | — |
@@ -323,7 +321,7 @@ Não iniciar as mudanças de sincronização da Sprint 1 sem a suíte mínima da
 | 30/07/2026 | Sprint 0 | `pnpm build` (com Vitest instalado) | Aprovado |
 | 30/07/2026 | Sprint 0 | `pnpm audit --prod` (pós-Vitest) | 0 vulnerabilidades conhecidas |
 | 30/07/2026 | Sprint 0 | `supabase migration list` + consulta direta a `supabase_migrations.schema_migrations` | 7 versões locais = 7 versões remotas aplicadas, uma a uma; nenhuma re-executada |
-| Pendente | Sprint 0 | Primeiro run real de `.github/workflows/deploy.yml` (inclui `supabase start`/`stop`) | A confirmar após este push |
+| 30/07/2026 | Sprint 0 | Primeiro run real de `.github/workflows/deploy.yml` (`gh run watch 30539728743`) | Aprovado: lint, typecheck, test, `pnpm audit --prod`, build, Supabase CLI, `supabase start`/`stop` e deploy — todos verdes |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -333,6 +331,7 @@ Substituir ou complementar esta tabela a cada sessão. Resultados antigos releva
 |---|---|---|---|---|---|
 | B-001 | Histórico de migrations de produção não foi consultado | Impede decidir correção segura da versão `20260727` | sessão de execução | Consultado diretamente via `supabase db query --linked` contra `supabase_migrations.schema_migrations` (7 versões, uma a uma, todas aplicadas). Ordem de dependência real confirmada pelo conteúdo SQL. Migration duplicada renomeada com timestamp único; histórico remoto reparado (`migration repair`) pra refletir a nova versão. | `FECHADO` |
 | B-002 | Ambiente Supabase de staging não foi definido | Impede testes destrutivos/concorrentes seguros num ambiente isolado | a definir | Esta máquina de desenvolvimento não tem Docker Desktop instalado (confirmado: `supabase db dump`/`db start` falham localmente por esse motivo) — não é possível rodar `supabase start` localmente até isso ser resolvido. O CI (`ubuntu-latest`) tem Docker por padrão e agora roda `supabase start`/`stop` a cada push, cobrindo a validação de schema/migration de forma automatizada — mas não substitui um ambiente de staging manual pra testes de dois aparelhos/concorrência real. Decidir: instalar Docker Desktop nesta máquina, ou criar um segundo projeto Supabase isolado pra staging manual. | `ABERTO (parcialmente mitigado pelo CI)` |
+| B-003 | Push de `.github/workflows/deploy.yml` recusado pelo GitHub por falta do escopo OAuth `workflow` | Impedia concluir S0-05/S0-08 e abrir o gate G1 | proprietário do projeto | Diagnosticado: o token do `gh auth status` estava na conta `esdraaline` sem o escopo `workflow`. Proprietário rodou `gh auth login -h github.com -s workflow -w`, autenticando `esdraaline` com o escopo `workflow` adicionado. Push do workflow refeito e aprovado (commit `470be73`, run `30539728743`). | `FECHADO` |
 
 Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
@@ -358,6 +357,7 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-005 | 30/07/2026 | Renomear `20260727_add_increment_use_count_rpc.sql` para `20260727120000_add_increment_use_count_rpc.sql`, mantendo `20260727_update_auth_and_day_items.sql` com o nome original | O conteúdo SQL do RPC de incremento referencia `mh_items.id UUID` e `user_id`, colunas que só existem depois de `update_auth_and_day_items` rodar — a ordem de dependência real exige que ele venha depois, não antes | Cadeia de migrations passa a ter versões únicas e ordenadas corretamente; histórico remoto (`supabase_migrations.schema_migrations`) foi reparado via `supabase migration repair` pra refletir a nova versão, sem re-executar SQL algum | Consulta SQL direta a `schema_migrations`; commit desta sessão |
 | D-006 | 30/07/2026 | Desabilitar seed do Supabase local (`db.seed.enabled=false`) em vez de criar um `seed.sql` | O catálogo de itens é semeado client-side em runtime (`initializeDefaultItems`), não faz sentido duplicar via SQL seed | `supabase db reset` local deixa de falhar por seed ausente | `supabase/config.toml` |
 | D-007 | 30/07/2026 | Validar migrations em banco descartável só via CI (Docker do runner), não localmente | Esta máquina de desenvolvimento não tem Docker Desktop instalado | S0-08 fica coberto automaticamente a cada push, mas falta um ambiente local/staging pra testes manuais de concorrência (B-002 permanece parcialmente aberto) | `.github/workflows/deploy.yml` |
+| D-008 | 30/07/2026 | Dividir o commit do Sprint 0 em dois (um sem `deploy.yml`, outro só com ele) em vez de esperar a resolução do escopo OAuth | O push do commit único foi recusado pelo GitHub por falta do escopo `workflow`; dividir permitiu enviar o restante do Sprint 0 sem ficar bloqueado | Dois commits no histórico (`7116c79` e `470be73`) em vez de um; nenhum dado ou schema foi afetado | commits desta sessão |
 
 ### Modelo para nova decisão
 
@@ -369,24 +369,25 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Confirmar que o primeiro run real do CI atualizado passa (lint, typecheck, test, build, audit, `supabase start`/`stop`); com isso, fechar a Sprint 0 como `CONCLUÍDA`, aprovar o gate G1 e iniciar a Sprint 1 (tombstone/cutoff de reset — AUD-001 e AUD-005).
+Sprint 0 concluída e gate G1 aprovado. Iniciar a Sprint 1: aprovar o modelo de versão server-side (S1-01) e implementar tombstone/cutoff de reset por domínio (S1-02), atacando AUD-001 (crítico) e AUD-005.
 
 ### Sequência recomendada
 
-1. Verificar o resultado do workflow do GitHub Actions deste push (`gh run list`/`gh run view`).
-2. Se o CI passar: marcar S0-05 e S0-08 como `CONCLUÍDO`, Sprint 0 como `CONCLUÍDA`, gate G1 como `APROVADO`.
-3. Se o CI falhar: registrar o erro real aqui antes de qualquer outra mudança (não editar migrations/schema até entender a causa).
-4. Decidir B-002 (Docker Desktop local vs. projeto Supabase de staging separado).
-5. Iniciar Sprint 1: aprovar modelo de versão server-side (S1-01) e criar tombstone/cutoff de reset por domínio (S1-02).
+1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 1 antes de codar.
+2. S1-01: decidir e registrar como decisão o modelo de versionamento server-side (ex.: `updated_at` continua sendo a fonte da verdade, ou entra um contador monotônico por linha).
+3. S1-02: criar tombstone/cutoff de reset por domínio (Compras e Rotina) — usar o teste vermelho já existente em `lwwMerges.test.ts` (AUD-001) como critério de aceite: deve passar a `it()` normal depois da correção.
+4. S1-03 a S1-07: atualizar RPCs, merges local/remoto, persistência do cutoff no Dexie e testes de matriz online/offline/clock skew.
+5. Ao final da Sprint 1: rodar lint/typecheck/test/build, atualizar este status (estado da sprint, achados AUD-001/AUD-005, gate G2 permanece pendente até a Sprint 2), commit e push na main.
+6. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto — decidir quando for necessário testar concorrência real de dois aparelhos.
 
 ### Não fazer ainda
 
-- Não alterar RPCs de produção além do reparo de histórico já feito.
+- Não alterar RPCs de produção além do que a Sprint 1 exigir, com migration versionada.
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
 - Não implementar Realtime.
 - Não iniciar melhorias visuais da Sprint 5.
 - Não adicionar evoluções de produto do backlog.
-- Não iniciar a Sprint 1 antes de confirmar o resultado real do CI (gate G1).
+- Não iniciar a Sprint 2 antes do gate de saída da Sprint 1 (nenhum estado anterior a reset reaparece; relógio do aparelho não decide sozinho o vencedor).
 
 ## 14. Histórico de evolução
 
@@ -399,6 +400,8 @@ Confirmar que o primeiro run real do CI atualizado passa (lint, typecheck, test,
 | 30/07/2026 | Sprint 0 | CI reescrito: lint, typecheck, test, `pnpm audit --prod`, build e `supabase start`/`stop` num Postgres descartável antes do deploy; secrets validados; `engines`/`packageManager` fixados | Aprovado localmente; run real do Actions a confirmar | commit desta sessão; `.github/workflows/deploy.yml` |
 | 30/07/2026 | Sprint 0 | Ambiente Supabase local corrigido (seed desabilitado, portas/redirects `:5173`); `sendPasswordReset` usa `BASE_URL` | AUD-015 resolvido | commit desta sessão |
 | 30/07/2026 | Sprint 0 | Migration duplicada `20260727` resolvida: renomeação com timestamp único + histórico remoto verificado e reparado | AUD-008 e B-001 resolvidos; nenhum dado ou schema de produção foi alterado além do reparo do próprio histórico de tracking | commit desta sessão |
+| 30/07/2026 | Sprint 0 | Push do workflow bloqueado por falta do escopo OAuth `workflow`; commit dividido em dois para não travar o restante do Sprint 0 | `feat(sprint-0)` (`7116c79`) enviado sem o workflow; proprietário reautenticou o `gh` com `gh auth login -s workflow`; `ci(sprint-0)` (`470be73`) com o workflow enviado em seguida | B-003 fechado; commits `7116c79` e `470be73` |
+| 30/07/2026 | Sprint 0 | Primeiro run real do CI atualizado confirmado aprovado (`gh run watch 30539728743`) — lint, typecheck, test, audit, build, `supabase start`/`stop` e deploy todos verdes | Sprint 0 encerrada como `CONCLUÍDA`; gate G1 `APROVADO`; AUD-016 concluído | run `30539728743`, commit `470be73` |
 
 ### Modelo de atualização
 
