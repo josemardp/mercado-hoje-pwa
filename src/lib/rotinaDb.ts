@@ -1,4 +1,4 @@
-import { db, supabase, MAX_SYNC_ATTEMPTS, type RotinaStepStateRecord, type RotinaSyncQueueEntry } from './db';
+import { db, supabase, MAX_SYNC_ATTEMPTS, resetDayDomain, type RotinaStepStateRecord, type RotinaSyncQueueEntry } from './db';
 
 /**
  * Load today's Rotina step state from Supabase for a specific user/day.
@@ -31,10 +31,15 @@ export async function loadRotinaStateFromSupabase(dayKey: string, userId: string
  * Structurally identical to mergeDayItemsWithLWW, kept separate rather than
  * generalized — mapping itemId<->stepId through a shared generic would be
  * more confusing than the ~15 duplicated lines.
+ *
+ * `cutoffAt`, when given, drops any surviving step older than the day's
+ * reset cutoff (see resetDayDomain in db.ts) — see mergeDayItemsWithLWW for
+ * why this is needed (AUD-001).
  */
 export function mergeRotinaStateWithLWW(
   localItems: RotinaStepStateRecord[],
   remoteItems: RotinaStepStateRecord[],
+  cutoffAt?: number,
 ): RotinaStepStateRecord[] {
   const merged = new Map<string, RotinaStepStateRecord>();
 
@@ -48,6 +53,14 @@ export function mergeRotinaStateWithLWW(
       merged.set(remoteItem.stepId, remoteItem);
     } else if ((remoteItem.updatedAt || 0) > (localItem.updatedAt || 0)) {
       merged.set(remoteItem.stepId, remoteItem);
+    }
+  }
+
+  if (cutoffAt != null) {
+    for (const [key, item] of merged) {
+      if ((item.updatedAt || 0) < cutoffAt) {
+        merged.delete(key);
+      }
     }
   }
 
@@ -102,15 +115,10 @@ export async function processRotinaSyncQueue(
         }
 
         case 'reset': {
-          // Only delete rows that existed as of the reset moment — a row
-          // another device writes afterward must survive.
-          const { error } = await supabase
-            .from('mh_rotina_state')
-            .delete()
-            .eq('day_key', entry.dayKey)
-            .eq('user_id', userId)
-            .lt('updated_at', new Date(entry.timestamp).toISOString());
-          if (error) throw new Error(error.message);
+          // Registers/advances the server-side cutoff (AUD-001) and deletes
+          // only rows older than it, atomically — a row another device
+          // writes afterward must survive.
+          await resetDayDomain(userId, entry.dayKey, 'rotina');
           successIds.push(entry.id!);
           break;
         }

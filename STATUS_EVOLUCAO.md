@@ -83,28 +83,28 @@ Um item somente pode ser marcado como `CONCLUÍDO` quando:
 
 | Campo | Estado atual |
 |---|---|
-| Situação geral | `EM EXECUÇÃO — SPRINT 0 CONCLUÍDA` |
-| Fase atual | Sprint 0 concluída (testes, CI, ambiente local, migration duplicada); primeiro run real do CI confirmado aprovado |
-| Sprint ativa | Sprint 1 — Integridade de reset e versão dos dados |
-| Foco atual | Iniciar Sprint 1: aprovar modelo de versão server-side (S1-01) e tombstone/cutoff de reset (S1-02) |
-| Próxima entrega | Sprint 1 — tombstone/cutoff de reset (AUD-001, AUD-005) |
-| Progresso do plano | ~9% (Sprint 0 completa; 6 sprints restantes) |
-| Sprints concluídas | 1 de 7 (Sprint 0) |
-| Achados resolvidos | 3 de 26 (AUD-008, AUD-015, AUD-016). 4 outros já têm teste de regressão vermelho documentando o bug (AUD-001, AUD-002, AUD-004, AUD-009) — reprodução criada, correção ainda não |
-| Bloqueios ativos | 1 (B-001 e B-003 resolvidos nesta sessão; B-002 permanece aberto) |
+| Situação geral | `EM EXECUÇÃO — SPRINT 1 CONCLUÍDA` |
+| Fase atual | Sprint 1 concluída (cutoff/tombstone de reset por domínio, aplicado em produção); AUD-001 (crítico) resolvido |
+| Sprint ativa | Sprint 2 — Sincronização idempotente e convergência |
+| Foco atual | Iniciar Sprint 2: remover incremento duplicado de `use_count` (S2-01) e `operation_id` idempotente (S2-02) |
+| Próxima entrega | Sprint 2 — idempotência e convergência (AUD-003, AUD-004, AUD-006, AUD-009) |
+| Progresso do plano | ~28% (16/58 itens — Sprints 0 e 1 completas; 5 sprints restantes) |
+| Sprints concluídas | 2 de 7 (Sprint 0, Sprint 1) |
+| Achados resolvidos | 4 de 26 (AUD-008, AUD-015, AUD-016, AUD-001). AUD-005 parcialmente mitigado (ver decisão D-009) — não contado como resolvido. 3 outros já têm teste de regressão vermelho documentando o bug (AUD-002, AUD-004, AUD-009) — reprodução criada, correção ainda não |
+| Bloqueios ativos | 1 (B-001 e B-003 resolvidos; B-002 permanece aberto) |
 | Último deploy estável conhecido | commit `470be73` (run `30539728743`, aprovado) |
-| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (32 passaram, 5 vermelhos esperados, 1 pendente); build aprovado; `pnpm audit --prod` sem vulnerabilidades; CI real do GitHub Actions aprovado de ponta a ponta |
+| Saúde da baseline | lint aprovado; typecheck aprovado; testes aprovados (38 passaram, 4 vermelhos esperados, 1 pendente); build aprovado; migration `20260801_add_reset_cutoffs.sql` aplicada e verificada em produção |
 
 ### Resumo por prioridade
 
 | Prioridade | Total | Concluídos | Restantes |
 |---|---:|---:|---:|
-| Crítico | 2 | 0 | 2 |
+| Crítico | 2 | 1 | 1 |
 | Alto | 7 | 1 | 6 |
 | Médio/Alto | 1 | 0 | 1 |
 | Médio | 11 | 2 | 9 |
 | Baixo | 5 | 0 | 5 |
-| **Total** | **26** | **3** | **23** |
+| **Total** | **26** | **4** | **22** |
 
 ### Critérios de cálculo
 
@@ -157,20 +157,20 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 
 ### Sprint 1 — Integridade de reset e versão dos dados
 
-**Estado:** `NÃO INICIADO`
-**Progresso:** 0/7 — 0%
+**Estado:** `CONCLUÍDA`
+**Progresso:** 7/7 — 100%
 **Dependência:** gate da Sprint 0.
 **Gate de saída:** nenhum estado anterior a reset reaparece e o relógio do aparelho não decide sozinho o vencedor.
 
 | ID | Entrega | Estado | Evidência/observação |
 |---|---|---|---|
-| S1-01 | Aprovar modelo de versão server-side | `NÃO INICIADO` | — |
-| S1-02 | Criar cutoff/tombstone de reset por domínio | `NÃO INICIADO` | — |
-| S1-03 | Atualizar RPCs de Compras e Rotina | `NÃO INICIADO` | — |
-| S1-04 | Atualizar merges local/remoto | `NÃO INICIADO` | — |
-| S1-05 | Persistir cutoff no Dexie | `NÃO INICIADO` | — |
-| S1-06 | Definir retenção segura dos tombstones | `NÃO INICIADO` | — |
-| S1-07 | Validar matriz online/offline/clock skew | `NÃO INICIADO` | — |
+| S1-01 | Aprovar modelo de versão server-side | `CONCLUÍDO` | Decisão D-009: cutoff de reset usa `clock_timestamp()` do próprio Postgres (não `Date.now()` do cliente) como fronteira. Versionamento de campo-a-campo (LWW normal, fora de reset) continua no timestamp do cliente por ora — migrar todo write pra HLC/versão do servidor é escopo maior que o desta sprint; risco residual registrado em AUD-005. |
+| S1-02 | Criar cutoff/tombstone de reset por domínio | `CONCLUÍDO` | Tabela `mh_reset_cutoffs` (PK `user_id+day_key+domain`) e RPC `reset_day_domain` em `supabase/migrations/20260801_add_reset_cutoffs.sql`, aplicada e verificada em produção. |
+| S1-03 | Atualizar RPCs de Compras e Rotina | `CONCLUÍDO` | `upsert_day_item_if_newer` e `upsert_rotina_step_if_newer` agora consultam `mh_reset_cutoffs` e rejeitam (`RETURN FALSE`) qualquer `p_updated_at` anterior ao cutoff, mesmo sem linha conflitante pra comparar — a causa raiz do AUD-001 (INSERT sem conflito sempre tinha sucesso). |
+| S1-04 | Atualizar merges local/remoto | `CONCLUÍDO` | `mergeDayItemsWithLWW`/`mergeRotinaStateWithLWW` (`db.ts`/`rotinaDb.ts`) ganharam parâmetro opcional `cutoffAt`; `useStore.ts`/`useRotinaState.ts` buscam o cutoff (`fetchAndStoreResetCutoff`) a cada load online e purgam do Dexie tudo que o cutoff descartou. |
+| S1-05 | Persistir cutoff no Dexie | `CONCLUÍDO` | Tabela Dexie `resetCutoffs` (`db.ts`, `version(5)`); `getLocalResetCutoff`/`setLocalResetCutoff` (nunca anda pra trás — testado). |
+| S1-06 | Definir retenção segura dos tombstones | `CONCLUÍDO` | Decisão D-010: reter cutoffs indefinidamente (1 linha por usuário+dia+domínio, crescimento limitado a ~730 linhas/ano para uso pessoal) em vez de expirar por janela de tempo — expirar arriscaria reabrir a janela do AUD-001 pra um aparelho que ficasse offline além do prazo. |
+| S1-07 | Validar matriz online/offline/clock skew | `CONCLUÍDO` | `lwwMerges.test.ts`: item/passo anterior ao cutoff não ressurge com remoto vazio; item/passo posterior ao cutoff sobrevive. `dexie.test.ts`: `setLocalResetCutoff` nunca anda pra trás e avança corretamente quando o novo valor é mais recente. Cenário "A reseta online / B offline reconecta depois" coberto pela combinação RPC (rejeita reinserção) + merge (purga a exibição); ver risco residual de clock skew em D-009. |
 
 ### Sprint 2 — Sincronização idempotente e convergência
 
@@ -268,11 +268,11 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 
 | Achado | Severidade | Sprint principal | Estado | Evidência de resolução |
 |---|---|---:|---|---|
-| AUD-001 — reset sem tombstone | Crítico | 1 | `NÃO INICIADO` | Teste de regressão vermelho criado (`lwwMerges.test.ts`); correção real é escopo da Sprint 1. |
+| AUD-001 — reset sem tombstone | Crítico | 1 | `CONCLUÍDO` | Cutoff/tombstone server-side por `user_id+day_key+domínio` (`mh_reset_cutoffs`, migration `20260801`); RPCs condicionais rejeitam escrita anterior ao cutoff mesmo sem linha conflitante; merges filtram por cutoff e purgam o Dexie local. Testes em `lwwMerges.test.ts` (não são mais `it.fails`) e `dexie.test.ts`. |
 | AUD-002 — sobreposição na Agenda | Crítico | 3 | `NÃO INICIADO` | Teste de regressão vermelho criado (`agendaScheduler.test.ts`); correção real é escopo da Sprint 3. |
 | AUD-003 — incremento duplicado | Alto | 2 | `NÃO INICIADO` | Reprodução registrada como `describe.todo` (exige mock de concorrência de rede); correção é escopo da Sprint 2. |
 | AUD-004 — `applied=false` ignorado | Alto | 2 | `NÃO INICIADO` | Teste de regressão vermelho criado pra Rotina e Agenda (`syncReconciliation.test.ts`); correção real é escopo da Sprint 2. |
-| AUD-005 — LWW pelo relógio local | Alto | 1 | `NÃO INICIADO` | — |
+| AUD-005 — LWW pelo relógio local | Alto | 1 | `EM IMPLEMENTAÇÃO` | Parcial: o cutoff de reset agora usa `clock_timestamp()` do servidor, não o relógio do cliente (fecha o gap de clock skew especificamente pra fronteira de reset). O versionamento de escrita campo-a-campo (toggle de item/passo fora de reset) continua em `Date.now()` do cliente — um aparelho com relógio adiantado ainda pode inflar seu próprio `updated_at` além do cutoff. Fechamento completo exige migrar todo write pra timestamp/versão emitido pelo servidor (D-009); não escopado nesta sprint. |
 | AUD-006 — ausência de atualização remota aberta | Alto | 2 | `NÃO INICIADO` | — |
 | AUD-007 — logout perde pendências | Alto | 4 | `NÃO INICIADO` | — |
 | AUD-008 — migration duplicada | Alto | 0 | `CONCLUÍDO` | `20260727_add_increment_use_count_rpc.sql` renomeado pra `20260727120000_...` (ordem de dependência real confirmada pelo próprio SQL: referencia `mh_items.id UUID`/`user_id`, que só existem depois de `20260727_update_auth_and_day_items.sql`). Histórico remoto verificado diretamente em `supabase_migrations.schema_migrations`: 7 versões locais = 7 versões remotas, uma a uma. Nenhuma migration já aplicada foi re-executada. |
@@ -322,6 +322,12 @@ Sprint 0 concluída — ver seção 13 (Foco da próxima sessão) para os próxi
 | 30/07/2026 | Sprint 0 | `pnpm audit --prod` (pós-Vitest) | 0 vulnerabilidades conhecidas |
 | 30/07/2026 | Sprint 0 | `supabase migration list` + consulta direta a `supabase_migrations.schema_migrations` | 7 versões locais = 7 versões remotas aplicadas, uma a uma; nenhuma re-executada |
 | 30/07/2026 | Sprint 0 | Primeiro run real de `.github/workflows/deploy.yml` (`gh run watch 30539728743`) | Aprovado: lint, typecheck, test, `pnpm audit --prod`, build, Supabase CLI, `supabase start`/`stop` e deploy — todos verdes |
+| 30/07/2026 | Sprint 1 | `npx tsc -b` | Aprovado |
+| 30/07/2026 | Sprint 1 | `pnpm lint` | Aprovado |
+| 30/07/2026 | Sprint 1 | `pnpm test` (Vitest) | 38 aprovados, 4 vermelhos esperados (AUD-002/004×2/009), 1 pendente (AUD-003) — AUD-001 saiu da lista de vermelhos esperados e agora passa de verdade |
+| 30/07/2026 | Sprint 1 | `pnpm build` | Aprovado |
+| 30/07/2026 | Sprint 1 | `npx supabase db query --linked -f supabase/migrations/20260801_add_reset_cutoffs.sql` | Aplicado sem erro em produção |
+| 30/07/2026 | Sprint 1 | `npx supabase migration repair --status applied 20260801` + consulta direta a `supabase_migrations.schema_migrations` | 8 versões locais = 8 versões remotas, uma a uma; tabela `mh_reset_cutoffs` confirmada em `information_schema.tables` |
 
 Substituir ou complementar esta tabela a cada sessão. Resultados antigos relevantes devem ser resumidos no histórico, sem transformar a seção em log infinito.
 
@@ -358,6 +364,8 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 | D-006 | 30/07/2026 | Desabilitar seed do Supabase local (`db.seed.enabled=false`) em vez de criar um `seed.sql` | O catálogo de itens é semeado client-side em runtime (`initializeDefaultItems`), não faz sentido duplicar via SQL seed | `supabase db reset` local deixa de falhar por seed ausente | `supabase/config.toml` |
 | D-007 | 30/07/2026 | Validar migrations em banco descartável só via CI (Docker do runner), não localmente | Esta máquina de desenvolvimento não tem Docker Desktop instalado | S0-08 fica coberto automaticamente a cada push, mas falta um ambiente local/staging pra testes manuais de concorrência (B-002 permanece parcialmente aberto) | `.github/workflows/deploy.yml` |
 | D-008 | 30/07/2026 | Dividir o commit do Sprint 0 em dois (um sem `deploy.yml`, outro só com ele) em vez de esperar a resolução do escopo OAuth | O push do commit único foi recusado pelo GitHub por falta do escopo `workflow`; dividir permitiu enviar o restante do Sprint 0 sem ficar bloqueado | Dois commits no histórico (`7116c79` e `470be73`) em vez de um; nenhum dado ou schema foi afetado | commits desta sessão |
+| D-009 | 30/07/2026 | Modelo de versão server-side (S1-01): usar `clock_timestamp()` do Postgres como cutoff de reset, mas manter o versionamento de escrita campo-a-campo em `Date.now()` do cliente por ora | Uma migração completa pra HLC/versão emitida pelo servidor em todo write (Compras, Rotina, Agenda, categorias, use_count) é um escopo muito maior que o previsto pra Sprint 1; o cutoff de reset já resolve o achado crítico (AUD-001) sem essa migração completa | AUD-001 resolvido; AUD-005 permanece parcialmente aberto (risco residual: clock skew do cliente ainda pode inflar `updated_at` além do cutoff) — fechamento completo fica pra uma decisão futura, fora do caminho crítico atual | `20260801_add_reset_cutoffs.sql`; cobertura do achado AUD-005 nesta atualização |
+| D-010 | 30/07/2026 | Reter `mh_reset_cutoffs` indefinidamente, sem expiração por janela de tempo (S1-06) | App de uso pessoal em poucos aparelhos: crescimento da tabela é limitado (~730 linhas/ano); expirar cutoffs arriscaria reabrir a janela do AUD-001 pra um aparelho que reconectasse depois do prazo de expiração | Nenhuma rotina de limpeza automática foi implementada; reavaliar somente se o volume real de uso mudar essa premissa | `20260801_add_reset_cutoffs.sql`; item S1-06 desta atualização |
 
 ### Modelo para nova decisão
 
@@ -369,25 +377,27 @@ Um bloqueio só pode ser fechado com evidência ou decisão registrada.
 
 ### Resultado esperado
 
-Sprint 0 concluída e gate G1 aprovado. Iniciar a Sprint 1: aprovar o modelo de versão server-side (S1-01) e implementar tombstone/cutoff de reset por domínio (S1-02), atacando AUD-001 (crítico) e AUD-005.
+Sprint 1 concluída (AUD-001 resolvido, AUD-005 parcialmente mitigado). Iniciar a Sprint 2: remover o incremento duplicado de `use_count` (S2-01, AUD-003), adicionar `operation_id` idempotente (S2-02) e tratar `applied === false` em Rotina/Agenda (S2-05/S2-06, AUD-004) — os testes vermelhos já existem em `syncReconciliation.test.ts`.
 
 ### Sequência recomendada
 
-1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 1 antes de codar.
-2. S1-01: decidir e registrar como decisão o modelo de versionamento server-side (ex.: `updated_at` continua sendo a fonte da verdade, ou entra um contador monotônico por linha).
-3. S1-02: criar tombstone/cutoff de reset por domínio (Compras e Rotina) — usar o teste vermelho já existente em `lwwMerges.test.ts` (AUD-001) como critério de aceite: deve passar a `it()` normal depois da correção.
-4. S1-03 a S1-07: atualizar RPCs, merges local/remoto, persistência do cutoff no Dexie e testes de matriz online/offline/clock skew.
-5. Ao final da Sprint 1: rodar lint/typecheck/test/build, atualizar este status (estado da sprint, achados AUD-001/AUD-005, gate G2 permanece pendente até a Sprint 2), commit e push na main.
-6. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto — decidir quando for necessário testar concorrência real de dois aparelhos.
+1. Ler `PLANO_EVOLUCAO_IMPLEMENTACAO.md` na seção da Sprint 2 antes de codar.
+2. S2-01: escolher uma única estratégia pra `use_count` (o app já tem `atomicIncrementUseCount`/`increment_use_count` — decidir se ele substitui totalmente a entrada `mark` da fila ou vice-versa) e remover o caminho duplicado.
+3. S2-02/S2-03: `operation_id` idempotente nas mutações que incrementam contadores; mutex por fila pra impedir processamento concorrente do mesmo `processPendingQueue`.
+4. S2-05/S2-06: usar `syncReconciliation.test.ts` (AUD-004, hoje `it.fails`) como critério de aceite — ler o booleano `applied`, buscar a linha canônica quando `false`, atualizar Dexie e estado React, tanto em Rotina quanto Agenda.
+5. S2-07: incluir `userId` na chave composta da Rotina (`dexie.test.ts` já documenta o gap como AUD-009, hoje `it.fails`) e nos índices/filtros relevantes.
+6. Ao final da Sprint 2: rodar lint/typecheck/test/build, atualizar este status, commit e push na main.
+7. B-002 (Docker Desktop local vs. projeto Supabase de staging separado) continua em aberto — decidir quando for necessário testar concorrência real de dois aparelhos.
 
 ### Não fazer ainda
 
-- Não alterar RPCs de produção além do que a Sprint 1 exigir, com migration versionada.
+- Não alterar RPCs de produção além do que a Sprint 2 exigir, com migration versionada.
 - Não renomear novamente nenhuma migration já aplicada sem repetir a consulta direta ao `schema_migrations`.
-- Não implementar Realtime.
+- Não implementar Realtime nesta sprint (S2-09 prevê só um protótipo, condicional ao ganho justificar o consumo).
 - Não iniciar melhorias visuais da Sprint 5.
 - Não adicionar evoluções de produto do backlog.
-- Não iniciar a Sprint 2 antes do gate de saída da Sprint 1 (nenhum estado anterior a reset reaparece; relógio do aparelho não decide sozinho o vencedor).
+- Não migrar o versionamento de escrita campo-a-campo pra timestamp do servidor sem uma decisão explícita registrada (residual de AUD-005/D-009) — isso é maior que o escopo listado pra Sprint 2.
+- Não iniciar a Sprint 3 antes do gate de saída da Sprint 2 (uma ação gera um efeito; escrita rejeitada converge; contas locais permanecem isoladas).
 
 ## 14. Histórico de evolução
 
@@ -402,6 +412,7 @@ Sprint 0 concluída e gate G1 aprovado. Iniciar a Sprint 1: aprovar o modelo de 
 | 30/07/2026 | Sprint 0 | Migration duplicada `20260727` resolvida: renomeação com timestamp único + histórico remoto verificado e reparado | AUD-008 e B-001 resolvidos; nenhum dado ou schema de produção foi alterado além do reparo do próprio histórico de tracking | commit desta sessão |
 | 30/07/2026 | Sprint 0 | Push do workflow bloqueado por falta do escopo OAuth `workflow`; commit dividido em dois para não travar o restante do Sprint 0 | `feat(sprint-0)` (`7116c79`) enviado sem o workflow; proprietário reautenticou o `gh` com `gh auth login -s workflow`; `ci(sprint-0)` (`470be73`) com o workflow enviado em seguida | B-003 fechado; commits `7116c79` e `470be73` |
 | 30/07/2026 | Sprint 0 | Primeiro run real do CI atualizado confirmado aprovado (`gh run watch 30539728743`) — lint, typecheck, test, audit, build, `supabase start`/`stop` e deploy todos verdes | Sprint 0 encerrada como `CONCLUÍDA`; gate G1 `APROVADO`; AUD-016 concluído | run `30539728743`, commit `470be73` |
+| 30/07/2026 | Sprint 1 | Cutoff/tombstone de reset por `user_id+day_key+domínio` criado (`mh_reset_cutoffs`, RPCs `reset_day_domain`/`get_reset_cutoff`, `upsert_day_item_if_newer`/`upsert_rotina_step_if_newer` atualizados) e aplicado em produção | AUD-001 (crítico) resolvido; AUD-005 parcialmente mitigado (D-009); Sprint 1 concluída, gate de saída atendido | migration `20260801_add_reset_cutoffs.sql`; testes `lwwMerges.test.ts`/`dexie.test.ts` |
 
 ### Modelo de atualização
 

@@ -5,6 +5,7 @@ import {
   syncDayItemToSupabase, loadDayStateFromSupabase, mergeDayItemsWithLWW,
   processSyncQueue, atomicIncrementUseCount, syncCategoryToSupabase,
   initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
+  fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain,
 } from './db';
 
 import { getTodayKey } from './categories';
@@ -318,7 +319,10 @@ export function useDayState() {
 
       if (isOnline) {
         try {
-          const remoteItems = await loadDayStateFromSupabase(todayKey, userId);
+          const [remoteItems, cutoffAt] = await Promise.all([
+            loadDayStateFromSupabase(todayKey, userId),
+            fetchAndStoreResetCutoff(userId, todayKey, 'compras'),
+          ]);
           if (cancelled) return;
           if (remoteItems) {
             // Re-read local state fresh right before merging: the network
@@ -333,8 +337,18 @@ export function useDayState() {
               .toArray();
             if (cancelled) return;
 
-            const merged = mergeDayItemsWithLWW(freshLocalItems, remoteItems);
+            const merged = mergeDayItemsWithLWW(freshLocalItems, remoteItems, cutoffAt);
             const userMerged = merged.filter(item => item.userId === userId);
+
+            // AUD-001: anything the cutoff dropped must also leave Dexie —
+            // otherwise this device's own stale copy lingers locally and can
+            // resurface in a future sync-queue push.
+            const survivingIds = new Set(userMerged.map(item => item.itemId));
+            const staleIds = freshLocalItems.filter(item => !survivingIds.has(item.itemId)).map(item => item.itemId);
+            if (staleIds.length > 0) {
+              await db.dayItems.bulkDelete(staleIds.map(id => [todayKey, id] as [string, string]));
+            }
+
             await db.dayItems.bulkPut(userMerged);
             if (cancelled) return;
 
@@ -568,10 +582,6 @@ export function useDayState() {
 
   const resetAll = useCallback(async () => {
     if (!user) return;
-    // Captured once and reused for both the direct delete and the queued
-    // fallback, so only rows that existed as of this exact moment are
-    // deleted — a row another device adds afterward must survive.
-    const resetTimestamp = Date.now();
     const newState = { checked: {}, postponed: {}, inToday: {} };
     setState(newState);
 
@@ -580,17 +590,20 @@ export function useDayState() {
 
     if (isOnline) {
       try {
-        await supabase
-          .from('mh_day_items')
-          .delete()
-          .eq('day_key', todayKey)
-          .eq('user_id', user.id)
-          .lt('updated_at', new Date(resetTimestamp).toISOString());
+        // AUD-001: registers/advances the server-side cutoff and deletes
+        // stale rows atomically, using the server's own clock — not this
+        // device's — as the reset boundary.
+        await resetDayDomain(user.id, todayKey, 'compras');
+        return;
       } catch {
-        // Ignored, sync queue will run
+        // Falls through to the offline-style path below: record a local
+        // cutoff immediately and queue the real reset for when connectivity
+        // (or the RPC) works again.
       }
     }
 
+    const resetTimestamp = Date.now();
+    await setLocalResetCutoff(user.id, todayKey, 'compras', resetTimestamp);
     await addToSyncQueueLocal({
       type: 'reset',
       dayKey: todayKey,

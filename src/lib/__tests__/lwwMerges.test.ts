@@ -38,18 +38,24 @@ describe('mergeDayItemsWithLWW', () => {
     expect(merged.find(i => i.itemId === 'a')?.checked).toBe(true);
   });
 
-  // ─── AUD-001 (Crítico): reset não tem tombstone. Um dispositivo B com
-  // cópia local antiga, ao reconectar depois de um reset em A, não deveria
-  // ressuscitar o item — mas o merge de união não tem como saber que a
-  // ausência no remoto significa "apagado por reset" em vez de "nunca
-  // sincronizado". Documentado como esperado-falhar até a Sprint 1 criar
-  // tombstone/cutoff de reset.
-  it.fails('AUD-001: um item marcado antes de um reset não deve ressurgir quando o remoto voltar vazio', () => {
+  // ─── AUD-001 (Crítico, resolvido na Sprint 1): reset agora tem um cutoff
+  // server-side por user_id+day_key+domínio (ver resetDayDomain em db.ts e a
+  // migration 20260801_add_reset_cutoffs.sql). O merge recebe esse cutoff
+  // como terceiro argumento e descarta qualquer sobrevivente mais antigo que
+  // ele — mesmo quando o remoto não tem mais linha nenhuma pra comparar.
+  it('AUD-001: um item marcado antes de um reset não ressurge quando o remoto volta vazio, dado o cutoff do reset', () => {
     const staleLocal = [dayItem({ itemId: 'a', updatedAt: 100, checked: true })];
-    // Remote vazio simula o estado pós-reset (sem tombstone hoje).
+    // Remote vazio simula o estado pós-reset (a linha já foi apagada).
     const remoteAfterReset: DayItemRecord[] = [];
-    const merged = mergeDayItemsWithLWW(staleLocal, remoteAfterReset);
+    const resetCutoff = 150; // reset aconteceu depois da escrita antiga (ts=100)
+    const merged = mergeDayItemsWithLWW(staleLocal, remoteAfterReset, resetCutoff);
     expect(merged).toHaveLength(0);
+  });
+
+  it('AUD-001: um item escrito depois do cutoff do reset sobrevive mesmo com o remoto vazio', () => {
+    const localAfterReset = [dayItem({ itemId: 'a', updatedAt: 200, checked: true })];
+    const merged = mergeDayItemsWithLWW(localAfterReset, [], 150);
+    expect(merged).toHaveLength(1);
   });
 });
 
@@ -63,6 +69,20 @@ describe('mergeRotinaStateWithLWW', () => {
     const remote = [rotinaState({ stepId: 'xixi', updatedAt: 200, done: true })];
     const merged = mergeRotinaStateWithLWW(local, remote);
     expect(merged.find(s => s.stepId === 'xixi')?.done).toBe(true);
+  });
+
+  // ─── AUD-001 (Crítico, resolvido na Sprint 1): mesmo cutoff de reset
+  // aplicado à Rotina — ver os testes equivalentes em mergeDayItemsWithLWW acima.
+  it('AUD-001: um passo marcado antes de um reset não ressurge quando o remoto volta vazio, dado o cutoff do reset', () => {
+    const staleLocal = [rotinaState({ stepId: 'xixi', updatedAt: 100, done: true })];
+    const merged = mergeRotinaStateWithLWW(staleLocal, [], 150);
+    expect(merged).toHaveLength(0);
+  });
+
+  it('AUD-001: um passo marcado depois do cutoff do reset sobrevive mesmo com o remoto vazio', () => {
+    const localAfterReset = [rotinaState({ stepId: 'xixi', updatedAt: 200, done: true })];
+    const merged = mergeRotinaStateWithLWW(localAfterReset, [], 150);
+    expect(merged).toHaveLength(1);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type User } from '@supabase/supabase-js';
-import { db, supabase, type RotinaStepStateRecord } from './db';
+import { db, type RotinaStepStateRecord, fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain } from './db';
 import {
   loadRotinaStateFromSupabase, mergeRotinaStateWithLWW,
   syncRotinaStepToSupabase, processRotinaSyncQueue, MAX_SYNC_ATTEMPTS,
@@ -146,7 +146,10 @@ export function useRotinaState(user: User | null) {
 
       if (isOnline) {
         try {
-          const remoteItems = await loadRotinaStateFromSupabase(todayKey, userId);
+          const [remoteItems, cutoffAt] = await Promise.all([
+            loadRotinaStateFromSupabase(todayKey, userId),
+            fetchAndStoreResetCutoff(userId, todayKey, 'rotina'),
+          ]);
           if (cancelled) return;
           if (remoteItems) {
             const freshLocalItems = await db.rotinaStepState
@@ -156,8 +159,17 @@ export function useRotinaState(user: User | null) {
               .toArray();
             if (cancelled) return;
 
-            const merged = mergeRotinaStateWithLWW(freshLocalItems, remoteItems);
+            const merged = mergeRotinaStateWithLWW(freshLocalItems, remoteItems, cutoffAt);
             const userMerged = merged.filter(item => item.userId === userId);
+
+            // AUD-001: purge whatever the cutoff dropped from Dexie too, so
+            // this device's own stale copy doesn't linger or get re-pushed.
+            const survivingIds = new Set(userMerged.map(item => item.stepId));
+            const staleIds = freshLocalItems.filter(item => !survivingIds.has(item.stepId)).map(item => item.stepId);
+            if (staleIds.length > 0) {
+              await db.rotinaStepState.bulkDelete(staleIds.map(id => [todayKey, id] as [string, string]));
+            }
+
             await db.rotinaStepState.bulkPut(userMerged);
             if (cancelled) return;
 
@@ -245,24 +257,25 @@ export function useRotinaState(user: User | null) {
 
   const resetToday = useCallback(async () => {
     if (!user) return;
-    const resetTimestamp = Date.now();
     setState({ done: {} });
 
     await db.rotinaStepState.where('dayKey').equals(todayKey).and(x => x.userId === user.id).delete();
 
     if (isOnline) {
       try {
-        await supabase
-          .from('mh_rotina_state')
-          .delete()
-          .eq('day_key', todayKey)
-          .eq('user_id', user.id)
-          .lt('updated_at', new Date(resetTimestamp).toISOString());
+        // AUD-001: registers/advances the server-side cutoff and deletes
+        // stale rows atomically, using the server's own clock as the
+        // reset boundary.
+        await resetDayDomain(user.id, todayKey, 'rotina');
+        return;
       } catch {
-        // Ignored, sync queue will run
+        // Falls through: record a local cutoff immediately and queue the
+        // real reset for when connectivity (or the RPC) works again.
       }
     }
 
+    const resetTimestamp = Date.now();
+    await setLocalResetCutoff(user.id, todayKey, 'rotina', resetTimestamp);
     await addToSyncQueueLocal({
       type: 'reset',
       dayKey: todayKey,
