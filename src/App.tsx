@@ -191,7 +191,7 @@ function AppInner() {
     }
   }, [retryStuckEntries]);
 
-  const { items, loading: itemsLoading, error: itemsError, addItem, searchItems } = useItems(user);
+  const { items, loading: itemsLoading, error: itemsError, addItem, searchItems, setItemCategory } = useItems(user);
 
   const rotinaState = useRotinaState(user);
   const agendaState = useAgendaState(user);
@@ -446,11 +446,14 @@ function AppInner() {
     const cat = getCategoryByKey(newCategory);
     const catName = cat ? cat.name : 'Outros';
 
+    // Update local DB
     await syncCategory(correctionItemId, newCategory);
+    // Also update the items state so the UI re-renders immediately
+    setItemCategory(correctionItemId, newCategory);
     setCorrectionShowPicker(false);
     setCorrectionItemId(null);
     showToast(`🔄 "${item.name}" movido para ${catName}`);
-  }, [correctionItemId, items, syncCategory, showToast]);
+  }, [correctionItemId, items, syncCategory, setItemCategory, showToast]);
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
