@@ -15,10 +15,11 @@ export interface DayStateData {
   checked: Record<string, boolean>;
   postponed: Record<string, boolean>;
   inToday: Record<string, boolean>;
+  qty: Record<string, number>; // per-day quantity override (default 1)
 }
 
 function getTodayItems(): DayStateData {
-  return { checked: {}, postponed: {}, inToday: {} };
+  return { checked: {}, postponed: {}, inToday: {}, qty: {} };
 }
 
 // S2-09: don't re-sync on every single focus/visibility blip (e.g. rapid
@@ -242,15 +243,21 @@ export function useDayState(user: User | null) {
     const handler = (e: Event) => {
       const { oldId, newId } = (e as CustomEvent<{ oldId: string; newId: string }>).detail;
       setState(prev => {
-        const remapKey = (obj: Record<string, boolean>) => {
+        const remapBool = (obj: Record<string, boolean>) => {
+          if (!(oldId in obj)) return obj;
+          const { [oldId]: value, ...rest } = obj;
+          return { ...rest, [newId]: value };
+        };
+        const remapQty = (obj: Record<string, number>) => {
           if (!(oldId in obj)) return obj;
           const { [oldId]: value, ...rest } = obj;
           return { ...rest, [newId]: value };
         };
         return {
-          checked: remapKey(prev.checked),
-          postponed: remapKey(prev.postponed),
-          inToday: remapKey(prev.inToday),
+          checked: remapBool(prev.checked),
+          postponed: remapBool(prev.postponed),
+          inToday: remapBool(prev.inToday),
+          qty: remapQty(prev.qty),
         };
       });
     };
@@ -338,15 +345,17 @@ export function useDayState(user: User | null) {
         const checked: Record<string, boolean> = {};
         const postponed: Record<string, boolean> = {};
         const inToday: Record<string, boolean> = {};
+        const qty: Record<string, number> = {};
 
         localItems.forEach(item => {
           if (item.checked) checked[item.itemId] = true;
           if (item.postponed) postponed[item.itemId] = true;
           if (item.inToday) inToday[item.itemId] = true;
+          if (item.qty && item.qty > 1) qty[item.itemId] = item.qty;
         });
 
         if (cancelled) return;
-        setState({ checked, postponed, inToday });
+        setState({ checked, postponed, inToday, qty });
       } catch (err) {
         logError('Failed to load day state', err);
       } finally {
@@ -391,14 +400,16 @@ export function useDayState(user: User | null) {
             const mergedChecked: Record<string, boolean> = {};
             const mergedPostponed: Record<string, boolean> = {};
             const mergedInToday: Record<string, boolean> = {};
+            const mergedQty: Record<string, number> = {};
 
             userMerged.forEach(item => {
               if (item.checked) mergedChecked[item.itemId] = true;
               if (item.postponed) mergedPostponed[item.itemId] = true;
               if (item.inToday) mergedInToday[item.itemId] = true;
+              if (item.qty && item.qty > 1) mergedQty[item.itemId] = item.qty;
             });
 
-            setState({ checked: mergedChecked, postponed: mergedPostponed, inToday: mergedInToday });
+            setState({ checked: mergedChecked, postponed: mergedPostponed, inToday: mergedInToday, qty: mergedQty });
             setSyncStatus('synced');
             setTimeout(() => setSyncStatus('idle'), 2000);
           }
@@ -426,6 +437,7 @@ export function useDayState(user: User | null) {
       checked: itemState.checked,
       postponed: itemState.postponed,
       inToday: itemState.inToday,
+      qty: itemState.qty || 1,
       updatedAt: now,
       userId: user.id,
     };
@@ -655,7 +667,7 @@ export function useDayState(user: User | null) {
 
   const resetAll = useCallback(async () => {
     if (!user) return;
-    const newState = { checked: {}, postponed: {}, inToday: {} };
+    const newState: DayStateData = { checked: {}, postponed: {}, inToday: {}, qty: {} };
     setState(newState);
 
     // Delete day items from local DB for this day
@@ -717,6 +729,85 @@ export function useDayState(user: User | null) {
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
+  // S3-08: increment an item's per-day quantity by `delta`.
+  // If the item isn't on today's list yet, this also adds it.
+  const incrementItemQty = useCallback(async (itemId: string, itemRecord: ItemRecord, delta: number) => {
+    if (!user) return;
+    const newState = { ...state };
+    newState.checked = { ...newState.checked };
+    newState.postponed = { ...newState.postponed };
+    newState.inToday = { ...newState.inToday };
+    newState.qty = { ...newState.qty };
+
+    // If the item isn't on today's list, bring it in first.
+    if (!newState.inToday[itemId]) {
+      newState.inToday[itemId] = true;
+      delete newState.postponed[itemId];
+      delete newState.checked[itemId];
+    }
+
+    const currentQty = newState.qty[itemId] || 1;
+    const newQty = Math.max(1, currentQty + delta);
+    newState.qty[itemId] = newQty;
+
+    setState(newState);
+
+    await saveSingleItemState(itemId, {
+      checked: false,
+      postponed: false,
+      inToday: true,
+      qty: newQty,
+    });
+
+    await addToSyncQueueLocal({
+      type: 'updateQty',
+      dayKey: todayKey,
+      itemId,
+      timestamp: Date.now(),
+    });
+
+    // If the item wasn't on the list before, also sync the catalog entry.
+    if (!state.inToday[itemId]) {
+      await addToSyncQueueLocal({
+        type: 'add',
+        dayKey: todayKey,
+        itemId: itemRecord.id,
+        itemName: itemRecord.name,
+        category: itemRecord.category,
+        qty: itemRecord.qty,
+        emoji: itemRecord.emoji,
+        useCount: itemRecord.useCount,
+        lastUsed: itemRecord.lastUsed,
+        timestamp: Date.now(),
+      });
+    }
+  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
+
+  // S3-08: set an item's per-day quantity to an explicit value.
+  const updateItemQty = useCallback(async (itemId: string, newQty: number) => {
+    if (!user) return;
+    const finalQty = Math.max(1, Math.round(newQty));
+    const newState = { ...state };
+    newState.qty = { ...newState.qty };
+    newState.qty[itemId] = finalQty;
+
+    setState(newState);
+
+    await saveSingleItemState(itemId, {
+      checked: !!state.checked[itemId],
+      postponed: !!state.postponed[itemId],
+      inToday: !!state.inToday[itemId],
+      qty: finalQty,
+    });
+
+    await addToSyncQueueLocal({
+      type: 'updateQty',
+      dayKey: todayKey,
+      itemId,
+      timestamp: Date.now(),
+    });
+  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
+
   return {
     signInWithPassword,
     sendPasswordReset,
@@ -732,6 +823,8 @@ export function useDayState(user: User | null) {
     unmarkAllChecked,
     resetAll,
     addItemToToday,
+    incrementItemQty,
+    updateItemQty,
     syncCategory,
     processSyncQueue: processPendingQueue,
     stuckSyncCount,

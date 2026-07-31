@@ -31,13 +31,14 @@ export interface DayItemRecord {
   checked: boolean;
   postponed: boolean;
   inToday: boolean;
+  qty?: number; // per-day quantity override (default 1 = use catalog qty)
   updatedAt: number; // timestamp for LWW merge
   userId: string;
 }
 
 export interface SyncQueueEntry {
   id?: number;
-  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'reset' | 'category' | 'incrementUse';
+  type: 'mark' | 'unmark' | 'postpone' | 'unpostpone' | 'add' | 'reset' | 'category' | 'incrementUse' | 'updateQty';
   dayKey: string;
   itemId?: string; // UUID v4
   itemName?: string;
@@ -190,6 +191,13 @@ class MercadoDatabase extends Dexie {
     this.version(7).stores({
       rotinaStepState: null, // drop the old store now that its data lives in rotinaStepStateByUser
     });
+    // S3-08: add `qty` to dayItems for per-day quantity overrides.
+    // The column is optional in the interface (defaults to 1 at read time)
+    // so the schema version bump is non-breaking — existing rows without
+    // qty will return undefined, treated as 1 by the callers.
+    this.version(8).stores({
+      dayItems: '[dayKey+itemId], dayKey, itemId, checked, postponed, inToday, qty, updatedAt, userId',
+    });
   }
 }
 
@@ -203,7 +211,7 @@ export const db = new MercadoDatabase();
 // upsert then hit RLS's USING clause on the first account's row (a real
 // row it doesn't own) and failed with 403.
 const DEFAULT_ITEMS: { name: string; category: string; emoji: string; qty: number; useCount: number }[] = [
-  { name: 'Goiaba', category: 'frutas', emoji: '🍈', qty: 1, useCount: 0 },
+  { name: 'Goiaba', category: 'frutas', emoji: '🍈', qty: 2, useCount: 0 },
   { name: 'Morango', category: 'frutas', emoji: '🍓', qty: 1, useCount: 0 },
   { name: 'Banana', category: 'frutas', emoji: '🍌', qty: 1, useCount: 0 },
   { name: 'Energético', category: 'bebidas', emoji: '⚡', qty: 1, useCount: 0 },
@@ -383,6 +391,7 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
       checked: !!item.checked,
       postponed: !!item.postponed,
       inToday: !!item.in_today,
+      qty: Number(item.qty) || 1,
       updatedAt: new Date(item.updated_at as string).getTime(),
       userId: item.user_id as string,
     }));
@@ -478,6 +487,7 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
       p_checked: item.checked,
       p_postponed: item.postponed,
       p_in_today: item.inToday,
+      p_qty: item.qty || 1,
       p_updated_at: new Date(item.updatedAt).toISOString(),
       p_user_id: item.userId,
     });
@@ -500,6 +510,7 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
           checked: !!canonical.checked,
           postponed: !!canonical.postponed,
           inToday: !!canonical.in_today,
+          qty: Number(canonical.qty) || 1,
           updatedAt: new Date(canonical.updated_at as string).getTime(),
           userId: canonical.user_id as string,
         });
@@ -596,7 +607,7 @@ export interface CompactedSyncQueue {
 }
 
 export function compactSyncQueueEntries(entries: SyncQueueEntry[]): CompactedSyncQueue {
-  const DAY_ITEM_TYPES = new Set(['mark', 'unmark', 'postpone', 'unpostpone']);
+  const DAY_ITEM_TYPES = new Set(['mark', 'unmark', 'postpone', 'unpostpone', 'updateQty']);
   const latestByDayItem = new Map<string, SyncQueueEntry>();
   const coveredByDayItem = new Map<string, number[]>();
   const incrementByItem = new Map<string, SyncQueueEntry>();
@@ -735,6 +746,20 @@ export async function processSyncQueue(
           if (entry.itemId && entry.category) {
             const ok = await syncCategoryToSupabase(entry.itemId, userId, entry.category, entry.timestamp);
             if (!ok) throw new Error('Failed to sync category');
+          }
+          successIds.push(entry.id!);
+          break;
+        }
+
+        case 'updateQty': {
+          // Per-day quantity override — re-read the local row (which already
+          // has the new qty) and push it to Supabase.
+          if (entry.itemId) {
+            const localDayItem = await db.dayItems.get([entry.dayKey, entry.itemId]);
+            if (localDayItem) {
+              const ok = await syncDayItemToSupabase(localDayItem);
+              if (!ok) throw new Error('Failed to sync day item qty');
+            }
           }
           successIds.push(entry.id!);
           break;
