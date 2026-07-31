@@ -1112,5 +1112,11 @@ export function useItems(user: User | null) {
       });
   }, [user]);
 
-  return { items, loading, error, addItem, searchItems, loadItems };
+  const setItemCategory = useCallback((itemId: string, newCategory: string) => {
+    setItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, category: newCategory } : i
+    ));
+  }, []);
+
+  return { items, loading, error, addItem, searchItems, loadItems, setItemCategory };
 }
