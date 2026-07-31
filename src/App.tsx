@@ -46,6 +46,7 @@ const ItemRow = memo(function ItemRow({
   dayQty,
   onIncrementQty,
   onEditQty,
+  onEdit,
 }: {
   item: ItemRecord;
   cat: (typeof CATEGORIES)[number];
@@ -56,6 +57,7 @@ const ItemRow = memo(function ItemRow({
   dayQty?: number; // per-day quantity override (default 1)
   onIncrementQty?: (delta: number) => void;
   onEditQty?: () => void;
+  onEdit?: () => void;
 }) {
   const effectiveQty = (dayQty && dayQty > 1) ? dayQty : (item.qty || 1) ;
   return (
@@ -104,6 +106,21 @@ const ItemRow = memo(function ItemRow({
         <div className="item-actions" onClick={(e) => e.stopPropagation()}>
           {onIncrementQty && !checked && (
             <>
+              {/* S3-09 fix: edit button — opens full editor (qty + category) */}
+              {onEdit && (
+                <button
+                  className="qty-btn edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit();
+                  }}
+                  aria-label={`Editar ${item.name}`}
+                  tabIndex={-1}
+                  title="Editar"
+                >
+                  ✏️
+                </button>
+              )}
               <button
                 className="qty-btn qty-minus-btn"
                 onClick={(e) => {
@@ -605,15 +622,22 @@ function AppInner() {
 
   // S3-08: open the quantity editor modal.
   const [showEditItemModal, setShowEditItemModal] = useState(false);
-  const [editItemData, setEditItemData] = useState<{ itemId: string; itemName: string; currentQty: number } | null>(null);
+  const [editItemData, setEditItemData] = useState<{ itemId: string; itemName: string; currentQty: number; currentCategory: string } | null>(null);
   const [editQtyInput, setEditQtyInput] = useState('1');
+  const [editCategoryInput, setEditCategoryInput] = useState('');
 
   const handleOpenEditQty = useCallback((item: ItemRecord) => {
     const currentQty = state.qty[item.id] || item.qty || 1;
-    setEditItemData({ itemId: item.id, itemName: item.name, currentQty });
+    setEditItemData({ itemId: item.id, itemName: item.name, currentQty, currentCategory: item.category });
     setEditQtyInput(String(currentQty));
+    setEditCategoryInput(item.category);
     setShowEditItemModal(true);
   }, [state.qty]);
+
+  // S3-09 fix: same modal but used from the ✏️ edit button — includes category
+  const handleOpenEdit = useCallback((item: ItemRecord) => {
+    handleOpenEditQty(item);
+  }, [handleOpenEditQty]);
 
   const handleSaveEditQty = useCallback(async () => {
     if (!editItemData) return;
@@ -626,11 +650,29 @@ function AppInner() {
       setEditItemData(null);
       return;
     }
-    await updateItemQty(editItemData.itemId, parsed);
+    // S3-09 fix: if quantity changed, update it
+    if (parsed !== editItemData.currentQty) {
+      await updateItemQty(editItemData.itemId, parsed);
+    }
+    // S3-09 fix: if category changed, update it
+    if (editCategoryInput && editCategoryInput !== editItemData.currentCategory) {
+      const item = items.find(i => i.id === editItemData.itemId);
+      if (item) {
+        await syncCategory(editItemData.itemId, editCategoryInput);
+        setItemCategory(editItemData.itemId, editCategoryInput);
+      }
+    }
     setShowEditItemModal(false);
     setEditItemData(null);
-    showToast(`✏️ "${editItemData.itemName}" — ${parsed}x`);
-  }, [editItemData, editQtyInput, updateItemQty, toggleItem, showToast]);
+    // Build toast message
+    const parts: string[] = [];
+    if (parsed !== editItemData.currentQty) parts.push(`${parsed}x`);
+    if (editCategoryInput && editCategoryInput !== editItemData.currentCategory) {
+      const cat = getCategoryByKey(editCategoryInput);
+      parts.push(cat ? `→ ${cat.name}` : '');
+    }
+    showToast(`✏️ "${editItemData.itemName}" — ${parts.join(', ')}`);
+  }, [editItemData, editQtyInput, editCategoryInput, updateItemQty, toggleItem, showToast, items, syncCategory, setItemCategory]);
 
   const handleRemoveFromList = useCallback(async () => {
     if (!editItemData) return;
@@ -1101,6 +1143,7 @@ function AppInner() {
                     dayQty={state.qty[item.id]}
                     onIncrementQty={(delta) => handleIncrementQty(item, delta)}
                     onEditQty={() => handleOpenEditQty(item)}
+                    onEdit={() => handleOpenEdit(item)}
                   />
                 ))}
               </div>
@@ -1131,6 +1174,7 @@ function AppInner() {
                     showPostpone={false}
                     dayQty={state.qty[item.id]}
                     onEditQty={() => handleOpenEditQty(item)}
+                    onEdit={() => handleOpenEdit(item)}
                   />
                 ))}
               </div>
@@ -1228,11 +1272,12 @@ function AppInner() {
         </div>
       </footer>
 
-      {/* S3-08: Edit item quantity modal */}
+      {/* S3-08 + S3-09: Edit item modal (quantity + category) */}
       {showEditItemModal && editItemData && (
         <Modal titleId="edit-item-modal-title" onClose={() => setShowEditItemModal(false)}>
           <h2 className="ios-modal-title" id="edit-item-modal-title">Editar {editItemData.itemName}</h2>
             <div className="edit-qty-section">
+              {/* Quantity */}
               <p className="edit-qty-label">Quantidade na lista de hoje:</p>
               <div className="edit-qty-input-wrap">
                 <button
@@ -1265,6 +1310,22 @@ function AppInner() {
                   +
                 </button>
               </div>
+
+              {/* S3-09: Category selector */}
+              <p className="edit-qty-label">Categoria:</p>
+              <div className="edit-cat-picker">
+                {CATEGORIES.map(c => (
+                  <button
+                    key={c.key}
+                    className={`edit-cat-btn${editCategoryInput === c.key ? ' active' : ''}`}
+                    onClick={() => setEditCategoryInput(c.key)}
+                    style={{ borderColor: editCategoryInput === c.key ? c.color : undefined }}
+                  >
+                    {c.emoji} {c.name}
+                  </button>
+                ))}
+              </div>
+
               <div className="edit-qty-actions">
                 <button
                   className="login-submit-btn"
