@@ -491,10 +491,19 @@ function AppInner() {
       lastUsed: updatedItem.lastUsed,
     });
 
+    // S3-08: if the item is already on today's list, increment qty instead
+    // of re-adding (which would just toggle checked state).
+    if (state.inToday[item.id]) {
+      await incrementItemQty(item.id, updatedItem, 1);
+      const newQty = (state.qty[item.id] || 1) + 1;
+      showToast(`➕ "${itemName}" — ${newQty}x`);
+      return;
+    }
+
     await addItemToToday(updatedItem);
 
     showToast(`🛒 "${itemName}" na lista!`);
-  }, [addItemToToday, showToast]);
+  }, [addItemToToday, incrementItemQty, showToast, state.inToday, state.qty]);
 
   const handleCreateNew = useCallback(async () => {
     const name = inputValue.trim();
