@@ -33,6 +33,9 @@ const TABS: { key: TabKey; label: string; emoji: string }[] = [
   { key: 'rotina', label: 'Rotina', emoji: '🌅' },
 ];
 
+// S3-08: ItemRow agora mostra quantidade diária e botões de incremento.
+// O clique principal continua marcando como concluído (sem quebrar UX).
+// Botões "-" e "+" ficam ao lado do botão de adiar.
 const ItemRow = memo(function ItemRow({
   item,
   cat,
@@ -40,6 +43,9 @@ const ItemRow = memo(function ItemRow({
   onToggle,
   onPostpone,
   showPostpone,
+  dayQty,
+  onIncrementQty,
+  onEditQty,
 }: {
   item: ItemRecord;
   cat: (typeof CATEGORIES)[number];
@@ -47,7 +53,11 @@ const ItemRow = memo(function ItemRow({
   onToggle: (item: ItemRecord) => void;
   onPostpone?: (item: ItemRecord) => void;
   showPostpone?: boolean;
+  dayQty?: number; // per-day quantity override (default 1)
+  onIncrementQty?: (delta: number) => void;
+  onEditQty?: () => void;
 }) {
+  const effectiveQty = (dayQty && dayQty > 1) ? dayQty : (item.qty || 1) ;
   return (
     <div
       className={`item${checked ? ' checked' : ''}`}
@@ -67,29 +77,81 @@ const ItemRow = memo(function ItemRow({
       <span className="checkbox" dangerouslySetInnerHTML={{ __html: CHECK_SVG }} />
       <span className="emoji-tag">{item.emoji}</span>
       <span className="name">{item.name}</span>
-      {item.qty && item.qty > 1 && <span className="qty">{item.qty}x</span>}
-      {showPostpone && !checked && onPostpone && (
+      {/* S3-08: quantity badge — clickable to open editor */}
+      {effectiveQty > 1 && (
         <span
-          className="postpone-btn"
+          className="qty qty-editable"
           onClick={(e) => {
             e.stopPropagation();
-            onPostpone(item);
+            onEditQty?.();
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               e.stopPropagation();
-              onPostpone(item);
+              onEditQty?.();
             }
           }}
-          title="Adiar para amanhã"
           role="button"
-          aria-label={`Adiar ${item.name} para amanhã`}
+          aria-label={`Editar quantidade de ${item.name}`}
           tabIndex={0}
         >
-          🕒
+          {effectiveQty}x
         </span>
       )}
+      {/* S3-08: action buttons cluster */}
+      {(showPostpone && !checked) || onIncrementQty ? (
+        <div className="item-actions" onClick={(e) => e.stopPropagation()}>
+          {onIncrementQty && !checked && (
+            <>
+              <button
+                className="qty-btn qty-minus-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onIncrementQty(-1);
+                }}
+                aria-label={`Diminuir quantidade de ${item.name}`}
+                tabIndex={-1}
+              >
+                −
+              </button>
+              <button
+                className="qty-btn qty-plus-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onIncrementQty(1);
+                }}
+                aria-label={`Aumentar quantidade de ${item.name}`}
+                tabIndex={-1}
+              >
+                +
+              </button>
+            </>
+          )}
+          {showPostpone && !checked && onPostpone && (
+            <span
+              className="postpone-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPostpone(item);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onPostpone(item);
+                }
+              }}
+              title="Adiar para amanhã"
+              role="button"
+              aria-label={`Adiar ${item.name} para amanhã`}
+              tabIndex={0}
+            >
+              🕒
+            </span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 });
@@ -111,6 +173,8 @@ function AppInner() {
     unmarkAllChecked,
     resetAll,
     addItemToToday,
+    incrementItemQty,
+    updateItemQty,
     syncCategory,
     stuckSyncCount,
     retryStuckEntries,
@@ -509,6 +573,60 @@ function AppInner() {
     await unpostponeItem(item.id);
     showToast(`📋 "${item.name}" — trazido de volta!`);
   }, [unpostponeItem, showToast]);
+
+  // S3-08: quick increment/decrement from the item row buttons.
+  const handleIncrementQty = useCallback(async (item: ItemRecord, delta: number) => {
+    if (!item.id) return;
+    const currentQty = state.qty[item.id] || item.qty || 1;
+    const newQty = Math.max(1, currentQty + delta);
+    await incrementItemQty(item.id, item, delta);
+    if (delta > 0) {
+      showToast(`➕ ${item.name} — ${newQty}x`);
+    } else {
+      if (newQty <= 1) {
+        showToast(`🗑️ ${item.name} removido da lista`);
+      } else {
+        showToast(`➖ ${item.name} — ${newQty}x`);
+      }
+    }
+  }, [incrementItemQty, state.qty, showToast]);
+
+  // S3-08: open the quantity editor modal.
+  const [showEditItemModal, setShowEditItemModal] = useState(false);
+  const [editItemData, setEditItemData] = useState<{ itemId: string; itemName: string; currentQty: number } | null>(null);
+  const [editQtyInput, setEditQtyInput] = useState('1');
+
+  const handleOpenEditQty = useCallback((item: ItemRecord) => {
+    const currentQty = state.qty[item.id] || item.qty || 1;
+    setEditItemData({ itemId: item.id, itemName: item.name, currentQty });
+    setEditQtyInput(String(currentQty));
+    setShowEditItemModal(true);
+  }, [state.qty]);
+
+  const handleSaveEditQty = useCallback(async () => {
+    if (!editItemData) return;
+    const parsed = parseInt(editQtyInput, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      // Below 1 means the user wants to remove the item.
+      // We handle this as a toggle (unmark + remove from today).
+      await toggleItem(editItemData.itemId);
+      setShowEditItemModal(false);
+      setEditItemData(null);
+      return;
+    }
+    await updateItemQty(editItemData.itemId, parsed);
+    setShowEditItemModal(false);
+    setEditItemData(null);
+    showToast(`✏️ "${editItemData.itemName}" — ${parsed}x`);
+  }, [editItemData, editQtyInput, updateItemQty, toggleItem, showToast]);
+
+  const handleRemoveFromList = useCallback(async () => {
+    if (!editItemData) return;
+    await toggleItem(editItemData.itemId);
+    setShowEditItemModal(false);
+    setEditItemData(null);
+    showToast(`🗑️ "${editItemData.itemName}" removido da lista`);
+  }, [editItemData, toggleItem, showToast]);
 
   const todayItems = allItemsForDay;
   const checkedCount = allItemsForDay.filter(i => state.checked[i.id]).length;
@@ -968,6 +1086,9 @@ function AppInner() {
                     onToggle={handleToggle}
                     onPostpone={handlePostpone}
                     showPostpone
+                    dayQty={state.qty[item.id]}
+                    onIncrementQty={(delta) => handleIncrementQty(item, delta)}
+                    onEditQty={() => handleOpenEditQty(item)}
                   />
                 ))}
               </div>
@@ -996,6 +1117,8 @@ function AppInner() {
                     checked={true}
                     onToggle={handleToggle}
                     showPostpone={false}
+                    dayQty={state.qty[item.id]}
+                    onEditQty={() => handleOpenEditQty(item)}
                   />
                 ))}
               </div>
@@ -1092,6 +1215,61 @@ function AppInner() {
           </button>
         </div>
       </footer>
+
+      {/* S3-08: Edit item quantity modal */}
+      {showEditItemModal && editItemData && (
+        <Modal titleId="edit-item-modal-title" onClose={() => setShowEditItemModal(false)}>
+          <h2 className="ios-modal-title" id="edit-item-modal-title">Editar {editItemData.itemName}</h2>
+            <div className="edit-qty-section">
+              <p className="edit-qty-label">Quantidade na lista de hoje:</p>
+              <div className="edit-qty-input-wrap">
+                <button
+                  className="edit-qty-btn edit-qty-dec"
+                  onClick={() => setEditQtyInput(v => {
+                    const n = parseInt(v, 10) - 1;
+                    return n < 1 ? '1' : String(n);
+                  })}
+                  aria-label="Diminuir quantidade"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  className="edit-qty-input"
+                  value={editQtyInput}
+                  onChange={(e) => setEditQtyInput(e.target.value)}
+                  min={1}
+                  max={99}
+                  aria-label="Quantidade"
+                />
+                <button
+                  className="edit-qty-btn edit-qty-inc"
+                  onClick={() => setEditQtyInput(v => {
+                    const n = parseInt(v, 10) + 1;
+                    return n > 99 ? '99' : String(n);
+                  })}
+                  aria-label="Aumentar quantidade"
+                >
+                  +
+                </button>
+              </div>
+              <div className="edit-qty-actions">
+                <button
+                  className="login-submit-btn"
+                  onClick={handleSaveEditQty}
+                >
+                  Salvar
+                </button>
+                <button
+                  className="edit-qty-remove-btn"
+                  onClick={handleRemoveFromList}
+                >
+                  🗑️ Remover da lista
+                </button>
+              </div>
+            </div>
+        </Modal>
+      )}
 
       {/* Logout confirmation modal (AUD-007) */}
       {showLogoutConfirm && (
