@@ -621,6 +621,42 @@ main {
 }
 .edit-qty-remove-btn:active { background: rgba(220, 38, 38, 0.12); color: #dc2626; }
 
+/* S3-09: edit button in item row */
+.edit-btn {
+  background: var(--overlay-06);
+  color: var(--ink);
+  font-size: 1rem;
+  padding: 0 8px;
+}
+.edit-btn:active { transform: scale(.9); background: var(--overlay-11); }
+
+/* S3-09: category picker in edit modal */
+.edit-cat-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.edit-cat-btn {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 20px;
+  border: 2px solid var(--overlay-08);
+  background: var(--overlay-04);
+  color: var(--ink);
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s var(--ease-out);
+}
+.edit-cat-btn:active { transform: scale(.95); }
+.edit-cat-btn.active {
+  background: var(--overlay-11);
+  border-color: var(--green);
+  color: var(--ink);
+}
+
 .category.concluded { padding-top: 14px; border-top: 1.5px dashed var(--overlay-14); }
 .category.concluded .category-head h2 { color: var(--ink-soft); }
 
