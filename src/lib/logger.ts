@@ -9,7 +9,7 @@ const isDev = import.meta.env.DEV;
 // Only these fields are structural (ids, counters, timestamps) — nothing
 // here is what the user typed or bought.
 const SYNC_ENTRY_ALLOWLIST = [
-  'id', 'type', 'dayKey', 'itemId', 'stepId', 'taskId',
+  'id', 'type', 'dayKey', 'itemId', 'stepId', 'taskId', 'stepDefId',
   'timestamp', 'attemptCount', 'userId',
 ] as const;
 
@@ -46,7 +46,7 @@ export function logSyncFailure(context: string, entry: unknown, err: unknown): v
 }
 
 interface QueueHealth {
-  domain: 'compras' | 'rotina' | 'agenda';
+  domain: 'compras' | 'rotina' | 'agenda' | 'rotina-steps';
   pending: number;
   oldestTimestamp: number | null;
 }
@@ -62,6 +62,6 @@ export function logQueueHealth(health: QueueHealth): void {
 }
 
 /** Sanitized reconciliation event — a write was rejected by LWW and had to be reconciled from the canonical row. */
-export function logReconciliation(domain: 'rotina' | 'agenda', context: Record<string, unknown>): void {
+export function logReconciliation(domain: 'rotina' | 'agenda' | 'rotina-steps', context: Record<string, unknown>): void {
   console.info('[reconciliation]', { domain, ...redactSyncEntry(context) });
 }

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { useRotinaState } from './lib/useRotinaState';
+import type { useRotinaStepDefs } from './lib/useRotinaStepDefs';
 import type { useAgendaState } from './lib/useAgendaState';
-import { ROTINA_STEPS, type RotinaStep } from './lib/rotinaSteps';
+import type { RotinaStepDefRecord } from './lib/db';
 import { getSkyPresetForStep, getAmbientSkyPreset, type SkyPreset } from './lib/rotinaSky';
 import { formatDateBR, getTodayKey } from './lib/categories';
 import AgendaPlanner from './AgendaPlanner';
+import RotinaEditStepsModal from './RotinaEditStepsModal';
 import './rotinaStyles.css';
 
 const ARC_PATH_D = 'M14,66 Q160,-14 306,14';
@@ -23,27 +25,30 @@ function greetingText(): string {
   return 'Boa noite, Josemar';
 }
 
-function firstIncomplete(done: Record<string, boolean>, fromIndex: number): number {
-  for (let i = 0; i < ROTINA_STEPS.length; i++) {
-    const idx = (fromIndex + i) % ROTINA_STEPS.length;
-    if (!done[ROTINA_STEPS[idx].id]) return idx;
+function firstIncomplete(steps: RotinaStepDefRecord[], done: Record<string, boolean>, fromIndex: number): number {
+  for (let i = 0; i < steps.length; i++) {
+    const idx = (fromIndex + i) % steps.length;
+    if (!done[steps[idx].id]) return idx;
   }
   return -1;
 }
 
-// Takes the useRotinaState() result as props (called once in App.tsx,
-// alongside useDayState) rather than calling the hook itself here — a
-// second independent instance would mean two Dexie queries, two 30s
-// day-transition timers and two online listeners for the same state.
+// Takes the useRotinaState()/useRotinaStepDefs() results as props (called
+// once in App.tsx, alongside useDayState) rather than calling the hooks
+// themselves here — a second independent instance would mean duplicate
+// Dexie queries, timers and online listeners for the same state.
 type RotinaTabProps = ReturnType<typeof useRotinaState> & {
+  stepDefs: ReturnType<typeof useRotinaStepDefs>;
   agenda: ReturnType<typeof useAgendaState>;
 };
 
 export default function RotinaTab({
   done, loading, syncStatus, toggleStep, resetToday,
-  stuckSyncCount, retryStuckEntries, agenda,
+  stuckSyncCount, retryStuckEntries, stepDefs, agenda,
 }: RotinaTabProps) {
+  const { steps } = stepDefs;
   const [mode, setModeState] = useState<'fixa' | 'agenda'>('fixa');
+  const [showEditSteps, setShowEditSteps] = useState(false);
   // `useRotinaState` runs unconditionally in App.tsx regardless of which tab
   // is active, so by the time this component actually mounts (user taps the
   // Rotina tab), `loading` may have already settled — there's no live
@@ -66,7 +71,12 @@ export default function RotinaTab({
     setModeState(next);
   }, []);
 
-  const initialPreset = useMemo(() => getSkyPresetForStep(ROTINA_STEPS[0]), []);
+  // Steps load asynchronously (Dexie + seed), so `steps` may still be empty
+  // on this very first render — falls back to the ambient (real clock) sky
+  // instead of crashing on steps[0].period; the crossfade effect below
+  // corrects it to the real first-step sky the moment steps arrive.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only-once seed, see comment above
+  const initialPreset = useMemo(() => (steps.length ? getSkyPresetForStep(steps[0]) : getAmbientSkyPreset()), []);
   const [bgState, setBgState] = useState<{ front: 'a' | 'b'; a: SkyPreset; b: SkyPreset }>({
     front: 'a',
     a: initialPreset,
@@ -90,9 +100,9 @@ export default function RotinaTab({
     return () => clearInterval(interval);
   }, [mode]);
 
-  const doneCount = useMemo(() => ROTINA_STEPS.filter(s => done[s.id]).length, [done]);
-  const totalCount = ROTINA_STEPS.length;
-  const allDone = doneCount === totalCount;
+  const doneCount = useMemo(() => steps.filter(s => done[s.id]).length, [steps, done]);
+  const totalCount = steps.length;
+  const allDone = totalCount > 0 && doneCount === totalCount;
   const progress = totalCount ? doneCount / totalCount : 0;
 
   // Follows the first not-done step automatically until the user explicitly
@@ -100,9 +110,9 @@ export default function RotinaTab({
   // recomputed from `done` every render, so it's always correct regardless
   // of when this component happens to mount relative to the data loading.
   const autoFocus = useMemo(() => {
-    const next = firstIncomplete(done, 0);
+    const next = firstIncomplete(steps, done, 0);
     return next === -1 ? 0 : next;
-  }, [done]);
+  }, [steps, done]);
   const focus = manualFocus !== null ? manualFocus : autoFocus;
 
   // Sky follows the focused step's own tag first; falls back to the real
@@ -110,7 +120,7 @@ export default function RotinaTab({
   // Agenda mode, always the real clock, since every Agenda task already
   // carries its own real scheduled time, unlike the fixed routine's
   // abstract per-step period tags.
-  const currentStep: RotinaStep | undefined = ROTINA_STEPS[focus];
+  const currentStep: RotinaStepDefRecord | undefined = steps[focus];
   const targetPreset =
     mode === 'agenda' || allDone || !currentStep
       ? getAmbientSkyPreset()
@@ -166,12 +176,12 @@ export default function RotinaTab({
     if (!wasDone) {
       setCardSwap(true);
       setTimeout(() => {
-        const next = firstIncomplete({ ...done, [currentStep.id]: true }, focus + 1);
+        const next = firstIncomplete(steps, { ...done, [currentStep.id]: true }, focus + 1);
         setManualFocus(next === -1 ? focus : next);
         setCardSwap(false);
       }, 180);
     }
-  }, [currentStep, done, toggleStep, doneCount, totalCount, burstSparkles, focus]);
+  }, [currentStep, done, toggleStep, doneCount, totalCount, burstSparkles, focus, steps]);
 
   const handleDotClick = useCallback((i: number) => {
     setCardSwap(true);
@@ -228,18 +238,30 @@ export default function RotinaTab({
                 </div>
               )}
             </div>
-            <button
-              className={`rotina-reset-btn${resetArmed ? ' rotina-confirming' : ''}`}
-              onClick={handleResetClick}
-              title={mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'}
-              aria-label={
-                resetArmed
-                  ? `Confirmar ${mode === 'agenda' ? 'limpeza da agenda' : 'reinício da rotina'}`
-                  : mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'
-              }
-            >
-              {resetArmed ? '✓' : '↺'}
-            </button>
+            <div className="rotina-header-actions">
+              {mode === 'fixa' && (
+                <button
+                  className="rotina-edit-steps-btn"
+                  onClick={() => setShowEditSteps(true)}
+                  title="Editar rotina"
+                  aria-label="Editar rotina"
+                >
+                  ✏️
+                </button>
+              )}
+              <button
+                className={`rotina-reset-btn${resetArmed ? ' rotina-confirming' : ''}`}
+                onClick={handleResetClick}
+                title={mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'}
+                aria-label={
+                  resetArmed
+                    ? `Confirmar ${mode === 'agenda' ? 'limpeza da agenda' : 'reinício da rotina'}`
+                    : mode === 'agenda' ? 'Limpar agenda' : 'Reiniciar rotina'
+                }
+              >
+                {resetArmed ? '✓' : '↺'}
+              </button>
+            </div>
           </div>
 
           <div
@@ -368,11 +390,19 @@ export default function RotinaTab({
                 {done[currentStep.id] ? 'Concluído ✓ — revisar' : 'Concluir ✅'}
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div className="rotina-card">
+              <div className="rotina-badge" style={{ fontSize: 44 }}>✏️</div>
+              <div className="rotina-step-title">Nenhum passo na rotina</div>
+              <button className="rotina-primary-btn" onClick={() => setShowEditSteps(true)}>
+                Editar rotina
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="rotina-trail">
-          {ROTINA_STEPS.map((step, i) => (
+          {steps.map((step, i) => (
             <div
               key={step.id}
               className={`rotina-dot${done[step.id] ? ' rotina-dot-done' : ''}${i === focus ? ' rotina-dot-current' : ''}`}
@@ -395,6 +425,10 @@ export default function RotinaTab({
         )}
         </div>
       </div>
+
+      {showEditSteps && (
+        <RotinaEditStepsModal stepDefs={stepDefs} onClose={() => setShowEditSteps(false)} />
+      )}
     </div>
   );
 }

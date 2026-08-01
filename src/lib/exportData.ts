@@ -11,14 +11,16 @@ export interface ExportedUserData {
   items: unknown[];
   dayItems: unknown[];
   rotinaState: unknown[];
+  rotinaSteps: unknown[];
   agendaTasks: unknown[];
 }
 
 export async function fetchUserDataForExport(userId: string): Promise<ExportedUserData> {
-  const [items, dayItems, rotinaState, agendaTasks] = await Promise.all([
+  const [items, dayItems, rotinaState, rotinaSteps, agendaTasks] = await Promise.all([
     supabase.from('mh_items').select('*'),
     supabase.from('mh_day_items').select('*'),
     supabase.from('mh_rotina_state').select('*'),
+    supabase.from('mh_rotina_steps').select('*'),
     supabase.from('mh_agenda_tasks').select('*'),
   ]);
 
@@ -28,6 +30,7 @@ export async function fetchUserDataForExport(userId: string): Promise<ExportedUs
     items: items.data ?? [],
     dayItems: dayItems.data ?? [],
     rotinaState: rotinaState.data ?? [],
+    rotinaSteps: rotinaSteps.data ?? [],
     agendaTasks: agendaTasks.data ?? [],
   };
 }

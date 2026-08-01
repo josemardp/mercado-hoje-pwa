@@ -6,8 +6,8 @@ import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/c
 import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
 import { classifyItem } from './lib/classifyCategory';
-import { ROTINA_STEPS } from './lib/rotinaSteps';
 import { useRotinaState } from './lib/useRotinaState';
+import { useRotinaStepDefs } from './lib/useRotinaStepDefs';
 import { useAgendaState } from './lib/useAgendaState';
 import Modal from './Modal';
 import { logError } from './lib/logger';
@@ -16,8 +16,9 @@ import { fetchUserDataForExport, downloadJSON } from './lib/exportData';
 // S6-01: RotinaTab pulls in AgendaPlanner, agendaScheduler and its own CSS
 // (rotinaStyles.css) — none of that is needed until the user actually opens
 // the Rotina tab, so it's split into its own chunk instead of the initial
-// bundle. The data hooks (useRotinaState/useAgendaState above) stay eager
-// because their counts feed the tab badge before the tab is ever opened.
+// bundle. The data hooks (useRotinaState/useRotinaStepDefs/useAgendaState
+// above) stay eager because their counts feed the tab badge before the tab
+// is ever opened.
 const RotinaTab = lazy(() => import('./RotinaTab'));
 
 // stroke uses var(--on-accent), not a hardcoded white: in dark mode the
@@ -211,6 +212,7 @@ function AppInner() {
   const { items, loading: itemsLoading, error: itemsError, addItem, searchItems, setItemCategory } = useItems(user);
 
   const rotinaState = useRotinaState(user);
+  const rotinaStepDefs = useRotinaStepDefs(user);
   const agendaState = useAgendaState(user);
 
   // AUD-010: "Limpar marcações" used to fire resetAll() (which wipes the
@@ -918,7 +920,9 @@ function AppInner() {
               ? concludedItems.length
               : tab.key === 'proximo'
               ? postponedItems.length
-              : ROTINA_STEPS.length - Object.keys(rotinaState.done).length;
+              : rotinaStepDefs.loading
+              ? 0
+              : rotinaStepDefs.steps.length - Object.keys(rotinaState.done).length;
           const selected = activeTab === tab.key;
           return (
             <button
@@ -957,7 +961,7 @@ function AppInner() {
       >
         {activeTab === 'rotina' ? (
           <Suspense fallback={null}>
-            <RotinaTab {...rotinaState} agenda={agendaState} />
+            <RotinaTab {...rotinaState} stepDefs={rotinaStepDefs} agenda={agendaState} />
           </Suspense>
         ) : (
         <>
