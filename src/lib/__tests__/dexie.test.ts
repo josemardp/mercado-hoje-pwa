@@ -3,10 +3,11 @@ import Dexie from 'dexie';
 import { db, getLocalResetCutoff, setLocalResetCutoff } from '../db';
 
 describe('Dexie schema (fake-indexeddb)', () => {
-  it('opens the database and exposes every table across the version chain (2→3→4→5→6→7→8→9)', async () => {
+  it('opens the database and exposes every table across the version chain (2→3→4→5→6→7→8→9→10)', async () => {
     await db.open();
     expect(db.isOpen()).toBe(true);
     expect(db.tables.map(t => t.name).sort()).toEqual([
+      'agendaGoSessions',
       'agendaSyncQueue',
       'agendaTasks',
       'dayItems',

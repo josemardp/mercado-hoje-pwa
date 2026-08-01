@@ -1,22 +1,17 @@
 import { useState, useCallback, useMemo } from 'react';
 import { type useAgendaState } from './lib/useAgendaState';
+import { type useGoMode } from './lib/useGoMode';
 import { formatDurationLabel } from './lib/agendaScheduler';
 import { FLOOR_MINUTES } from './lib/agendaDurationEstimator';
+import { CARD_PALETTE } from './lib/agendaCardPalette';
+import AgendaGoMode from './AgendaGoMode';
 
-type AgendaPlannerProps = ReturnType<typeof useAgendaState>;
-
-// Cycled by card index (not per-task identity) — a colorful accent per
-// card, echoing the pink/orange gradient badges already used in Rotina
-// fixa, without needing a category to key off of (agenda tasks are
-// freeform, unlike Compras' categorized items).
-const CARD_PALETTE = [
-  { grad: 'linear-gradient(135deg, #FF6B9D, #FFB347)', tint: 'linear-gradient(135deg, rgba(255,107,157,0.22), rgba(255,179,71,0.12))' },
-  { grad: 'linear-gradient(135deg, #4FACFE, #00F2FE)', tint: 'linear-gradient(135deg, rgba(79,172,254,0.22), rgba(0,242,254,0.12))' },
-  { grad: 'linear-gradient(135deg, #A78BFA, #F472B6)', tint: 'linear-gradient(135deg, rgba(167,139,250,0.22), rgba(244,114,182,0.12))' },
-  { grad: 'linear-gradient(135deg, #43E97B, #38F9D7)', tint: 'linear-gradient(135deg, rgba(67,233,123,0.22), rgba(56,249,215,0.12))' },
-  { grad: 'linear-gradient(135deg, #FFAA33, #FFE066)', tint: 'linear-gradient(135deg, rgba(255,170,51,0.22), rgba(255,224,102,0.12))' },
-  { grad: 'linear-gradient(135deg, #6C63FF, #4FACFE)', tint: 'linear-gradient(135deg, rgba(108,99,255,0.22), rgba(79,172,254,0.12))' },
-];
+// `goMode` is called once in App.tsx (alongside useAgendaState itself) and
+// passed down — same convention as RotinaTab's stepDefs prop, so switching
+// tabs/re-rendering never spins up a second independent Dexie/timer instance.
+type AgendaPlannerProps = ReturnType<typeof useAgendaState> & {
+  goMode: ReturnType<typeof useGoMode>;
+};
 
 function nowHHMM(): string {
   const d = new Date();
@@ -33,6 +28,7 @@ function addMinutesToHHMM(hhmm: string, minutes: number): string {
 export default function AgendaPlanner({
   tasks, loading, syncStatus, stuckSyncCount, retryStuckEntries,
   addTask, updateTaskTitle, updateTaskDuration, toggleFixed, updateFixedStart, removeTask, moveTask, toggleDone, generateSchedule,
+  goMode,
 }: AgendaPlannerProps) {
   const [windowMode, setWindowMode] = useState<'relativo' | 'absoluto'>('relativo');
   const [relativeHours, setRelativeHours] = useState(2);
@@ -143,7 +139,18 @@ export default function AgendaPlanner({
     return tasks.slice().sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''));
   }, [tasks, hasScheduleAny]);
 
+  const canStartGo = useMemo(() => tasks.some(t => t.scheduledStart && t.scheduledEnd && !t.done), [tasks]);
+  const goActive = !!goMode.session || !!goMode.celebration;
+
   let scheduledIndex = 0;
+
+  if (goActive) {
+    return (
+      <div className="agenda-planner">
+        <AgendaGoMode goMode={goMode} tasks={tasks} />
+      </div>
+    );
+  }
 
   return (
     <div className="agenda-planner">
@@ -222,6 +229,12 @@ export default function AgendaPlanner({
         <button className="rotina-primary-btn" onClick={handleGenerate} disabled={generating || tasks.length === 0}>
           {generating ? 'Montando...' : 'Montar agenda'}
         </button>
+
+        {canStartGo && (
+          <button className="agenda-go-start-btn" onClick={goMode.startGo}>
+            ▶ Iniciar Go
+          </button>
+        )}
 
         {validationError && <div className="agenda-validation-error" role="alert">{validationError}</div>}
         {shortfallMinutes !== null && shortfallMinutes > 0 && (

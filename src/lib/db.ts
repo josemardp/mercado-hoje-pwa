@@ -173,6 +173,36 @@ export interface ResetCutoffRecord {
   cutoffAt: number;
 }
 
+// ─── Agenda "Go" mode session ───────────────────────────────────────
+// Live execution state for the sequential per-task countdown ("modo Go").
+// Deliberately local-only (Dexie, no Supabase table/RPC, no sync queue):
+// unlike everything else in this app, two devices "racing" the same
+// countdown at once would just be confusing, not useful — there's nothing
+// here worth syncing across a phone and a desktop.
+//
+// `phaseEndsAt` (not a ticking counter) is the timekeeping anchor: the
+// engine always stores WHEN the current phase ends, and remaining time is
+// computed as `phaseEndsAt - Date.now()` wherever needed. That's what lets
+// the session survive the tab/app being closed and reopened later without
+// drifting — a plain "seconds remaining" counter would need to keep
+// ticking while the JS isn't even running.
+export type GoPhase = 'task' | 'bonus' | 'confirm';
+
+export interface AgendaGoSessionRecord {
+  dayKey: string;
+  userId: string;
+  phase: GoPhase;
+  taskOrder: string[]; // task ids, run order — snapshotted once at start
+  currentIndex: number; // index into taskOrder; meaningful only when phase === 'task'
+  paused: boolean;
+  phaseEndsAt?: number; // epoch ms — set when !paused
+  pausedRemainingMs?: number; // epoch ms remaining — set when paused
+  bankedExtraMs: number; // accumulated leftover time from early "Concluir agora" finishes
+  bonusEndedEarly: boolean; // user tapped "Fim" during the bonus phase while time still remained
+  startedAt: number;
+  updatedAt: number;
+}
+
 // ─── Dexie local DB ────────────────────────────────────────────────
 class MercadoDatabase extends Dexie {
   items!: Table<ItemRecord, string>;
@@ -185,6 +215,7 @@ class MercadoDatabase extends Dexie {
   resetCutoffs!: Table<ResetCutoffRecord, [string, string, string]>; // compound key [userId+dayKey+domain]
   rotinaStepDefs!: Table<RotinaStepDefRecord, [string, string]>; // compound key [id, userId]
   rotinaStepDefSyncQueue!: Table<RotinaStepDefSyncQueueEntry, number>;
+  agendaGoSessions!: Table<AgendaGoSessionRecord, [string, string]>; // compound key [dayKey, userId]
 
   constructor() {
     super('MercadoHoje');
@@ -243,6 +274,12 @@ class MercadoDatabase extends Dexie {
     this.version(9).stores({
       rotinaStepDefs: '[id+userId], id, userId, order, deleted, updatedAt',
       rotinaStepDefSyncQueue: '++id, type, stepDefId, timestamp, userId',
+    });
+    // Agenda "Go" mode session — local-only live execution state (see
+    // AgendaGoSessionRecord above for why this never syncs to Supabase).
+    // Purely additive: brand new store, no upgrade() copy needed.
+    this.version(10).stores({
+      agendaGoSessions: '[dayKey+userId], dayKey, userId, updatedAt',
     });
   }
 }
