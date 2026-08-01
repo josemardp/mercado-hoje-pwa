@@ -283,8 +283,17 @@ main.main-rotina {
   padding: 14px 0;
 }
 
+/* AUD-026: the ambient sky preset (see rotinaSky.ts) isn't always dark —
+   "afternoon"/"morning" fade into pale yellow/cream at their bottom stop.
+   Every text-bearing surface in Agenda mode used a light (white-tinted)
+   glass fill, which only reads against a dark gradient — white text on a
+   pale-yellow-tinted near-white panel has near-zero contrast (reported:
+   unreadable on a PC's taller viewport, where more of the pale portion of
+   the gradient is visible at once). Switched to a dark glass fill instead:
+   contrast against white text is now guaranteed regardless of what's
+   behind it, light gradient or dark. */
 .agenda-window-input {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 12, 28, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 18px;
   padding: 14px;
@@ -306,7 +315,7 @@ main.main-rotina {
   color: var(--rotina-ink-dim);
 }
 .agenda-window-fields input {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(15, 12, 28, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 10px;
   color: var(--rotina-ink);
@@ -328,7 +337,7 @@ main.main-rotina {
 .agenda-title-input {
   flex: 1;
   min-width: 140px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 12, 28, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 12px;
   color: var(--rotina-ink);
@@ -348,39 +357,99 @@ main.main-rotina {
   padding: 10px 16px;
 }
 
-.agenda-table-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+/* ─── AGENDA TASK CARDS ───────────────────────────────────────────
+   Replaced the old plain table (AUD-027: bland, required horizontal
+   scroll on narrow screens, and its transparent cells inherited the
+   contrast bug fixed above) with a colorful card per task, echoing the
+   gradient-badge look already established by Rotina fixa's .rotina-card/
+   .rotina-badge. Each card's accent color cycles through CARD_PALETTE
+   (AgendaPlanner.tsx) by position, not task identity — purely decorative
+   variety, not a category signal (agenda tasks are freeform). */
+.agenda-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.agenda-task-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 24px -16px rgba(0, 0, 0, .55);
+  transition: opacity .2s ease, transform .15s ease;
+}
+.agenda-task-card:active { transform: scale(.99); }
+.agenda-task-card-done { opacity: .55; }
+.agenda-task-card-done .agenda-task-title-input { text-decoration: line-through; }
+
+.agenda-task-check {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .4);
+  background: transparent;
+  color: #1B1226;
+  font-weight: 800;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.agenda-task-main {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.agenda-table {
-  width: 100%;
-  min-width: 560px;
-  border-collapse: collapse;
-  font-size: 13px;
+.agenda-task-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.agenda-table th {
-  text-align: left;
-  font-family: 'Space Mono', monospace;
-  font-size: 10px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--rotina-ink-dim);
-  padding: 6px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-}
-.agenda-table td {
-  padding: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  vertical-align: middle;
-}
-.agenda-task-row.agenda-task-done { opacity: 0.55; }
-.agenda-title-edit {
+.agenda-task-title-input {
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   color: var(--rotina-ink);
-  font-size: 13px;
-  width: 100%;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 2px 0;
+}
+.agenda-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.agenda-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.agenda-task-time-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1B1226;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.agenda-task-duration {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--rotina-ink-dim);
 }
 .agenda-duration-input {
   width: 56px;
@@ -401,34 +470,21 @@ main.main-rotina {
   font-size: 12px;
 }
 .agenda-fixed-badge {
-  margin-top: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: 26px;
   background: rgba(255, 255, 255, 0.12);
   border: none;
   color: var(--rotina-ink-dim);
   font-size: 10px;
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 999px;
+  padding: 4px 12px;
   cursor: pointer;
 }
 .agenda-fixed-badge.agenda-fixed-on {
   background: linear-gradient(120deg, #FF6B9D, #FFB347);
   color: #1B1226;
-}
-.agenda-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.agenda-row-actions input[type="checkbox"] {
-  width: 22px;
-  height: 22px;
-  padding: 9px;
-  box-sizing: content-box;
 }
 .agenda-remove-btn {
   background: transparent;
@@ -437,8 +493,8 @@ main.main-rotina {
   font-size: 18px;
   cursor: pointer;
   line-height: 1;
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 32px;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -447,7 +503,6 @@ main.main-rotina {
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  margin-right: 4px;
 }
 .agenda-reorder-btn {
   background: rgba(255, 255, 255, 0.1);
