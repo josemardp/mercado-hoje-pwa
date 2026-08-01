@@ -147,4 +147,45 @@ describe('Dexie schema (fake-indexeddb)', () => {
     expect(await getLocalResetCutoff('user-1', '2026-07-30', 'rotina')).toBe(200);
     await db.resetCutoffs.delete(['user-1', '2026-07-30', 'rotina']);
   });
+
+  // ─── Regressão: itens da lista de Compras que não foram comprados nem
+  // marcados como "adiados" sumiam na virada do dia — useDayState só
+  // carregava itens do dayKey de hoje e só arrastava pro dia seguinte quem
+  // tinha postponed=true, então um item só "na lista" (nem comprado, nem
+  // adiado) ficava preso pra sempre no dayKey de ontem. Este teste cobre a
+  // query que a correção usa: varrer todo dayKey < hoje (não só o mais
+  // recente) e trazer tudo que não foi comprado, deduplicando por item.
+  it('itens não comprados de qualquer dia anterior (adiados ou não) são candidatos a carry-over; comprados não', async () => {
+    const userId = 'user-carryover';
+    const today = '2026-08-01';
+    await db.dayItems.bulkAdd([
+      { dayKey: '2026-07-30', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 100, userId },
+      { dayKey: '2026-07-30', itemId: 'feijao', checked: true, postponed: false, inToday: true, updatedAt: 100, userId },
+      { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId },
+      { dayKey: '2026-07-31', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
+    ]);
+
+    const staleItems = await db.dayItems
+      .where('dayKey')
+      .below(today)
+      .and(item => item.userId === userId)
+      .toArray();
+
+    const notBought = new Map<string, (typeof staleItems)[number]>();
+    for (const item of staleItems) {
+      if (item.checked) continue;
+      const existing = notBought.get(item.itemId);
+      if (!existing || item.updatedAt > existing.updatedAt) {
+        notBought.set(item.itemId, item);
+      }
+    }
+
+    expect([...notBought.keys()].sort()).toEqual(['arroz', 'leite']);
+    // 'arroz' appears in two stale days — the more recent (07-31) row wins.
+    expect(notBought.get('arroz')?.dayKey).toBe('2026-07-31');
+    // 'feijao' was bought (checked=true), so it must never come back.
+    expect(notBought.has('feijao')).toBe(false);
+
+    await db.dayItems.where('userId').equals(userId).delete();
+  });
 });

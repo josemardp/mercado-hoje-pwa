@@ -372,6 +372,19 @@ export async function resetDayDomain(userId: string, dayKey: string, domain: Res
 
 // ─── LWW Merge ──────────────────────────────────────
 
+function mapSupabaseDayItem(item: Record<string, unknown>): DayItemRecord {
+  return {
+    dayKey: item.day_key as string,
+    itemId: item.item_id as string,
+    checked: !!item.checked,
+    postponed: !!item.postponed,
+    inToday: !!item.in_today,
+    qty: Number(item.qty) || 1,
+    updatedAt: new Date(item.updated_at as string).getTime(),
+    userId: item.user_id as string,
+  };
+}
+
 /**
  * Load day items from Supabase for a specific user and day.
  */
@@ -385,16 +398,34 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
 
     if (error || !data) return null;
 
-    return data.map((item: Record<string, unknown>): DayItemRecord => ({
-      dayKey: item.day_key as string,
-      itemId: item.item_id as string,
-      checked: !!item.checked,
-      postponed: !!item.postponed,
-      inToday: !!item.in_today,
-      qty: Number(item.qty) || 1,
-      updatedAt: new Date(item.updated_at as string).getTime(),
-      userId: item.user_id as string,
-    }));
+    return data.map(mapSupabaseDayItem);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recovery path for the "items vanished at day rollover" bug: items left
+ * unchecked on an earlier day only ever carry forward via this device's own
+ * IndexedDB (see useDayState's load()) — a device that never had those rows
+ * locally (a different device, or one that had its storage cleared) can
+ * still pull them back from Supabase, since add/mark actions always synced
+ * there while the device that made them was online. Deliberately ignores
+ * per-day reset cutoffs: an explicit "Limpar lista do dia" already deletes
+ * the underlying rows, so nothing here could resurrect them anyway.
+ */
+export async function loadStaleUnfinishedItemsFromSupabase(userId: string, beforeDayKey: string): Promise<DayItemRecord[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from('mh_day_items')
+      .select('*')
+      .lt('day_key', beforeDayKey)
+      .eq('user_id', userId)
+      .eq('checked', false);
+
+    if (error || !data) return null;
+
+    return data.map(mapSupabaseDayItem);
   } catch {
     return null;
   }
