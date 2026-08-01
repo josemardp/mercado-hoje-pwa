@@ -43,7 +43,7 @@ Estratégia **offline-first com Last-Write-Wins (LWW) por linha**, replicada nos
 4. **Reset com tombstone**: "Limpar lista do dia"/reiniciar rotina grava um cutoff server-side (`mh_reset_cutoffs`, timestamp do próprio Postgres) por usuário+dia+domínio — um aparelho que estava offline no momento do reset não ressuscita dados antigos ao reconectar.
 5. `use_count` (frequência de uso de um item) só é incrementado por um caminho idempotente (`operation_id` único), nunca por uma escrita "absoluta" concorrente com o incremento.
 6. Reconectar/voltar o foco na aba dispara automaticamente um novo pull+merge e reprocessa a fila pendente (throttle de 30s).
-7. Compras: itens adiados carregam pro dia seguinte automaticamente. Rotina e Agenda são por-dia — não carregam histórico.
+7. Compras: qualquer item não comprado (adiado ou não) carrega pro dia seguinte automaticamente; só item marcado como comprado fica pra trás. Rotina e Agenda são por-dia — não carregam histórico.
 
 ---
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
 import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
-  syncDayItemToSupabase, loadDayStateFromSupabase, mergeDayItemsWithLWW,
+  syncDayItemToSupabase, loadDayStateFromSupabase, loadStaleUnfinishedItemsFromSupabase, mergeDayItemsWithLWW,
   processSyncQueue, syncCategoryToSupabase, compactSyncQueueEntries,
   initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
   fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain,
@@ -296,24 +296,34 @@ export function useDayState(user: User | null) {
           .and(item => item.userId === userId)
           .toArray();
 
-        const lastItem = await db.dayItems
+        // Carry over every item that wasn't bought yet — not just the ones
+        // explicitly "adiados". Previously only postponed=true items rolled
+        // into the new day, so an item added today and left unchecked (never
+        // marked postponed) was stranded in yesterday's dayKey forever: gone
+        // from the list, gone from "concluídos", with no trace anywhere.
+        // Scanning every stale day (not just the single most recent one)
+        // also covers the case where the app wasn't opened for more than one
+        // day in a row.
+        const staleItems = await db.dayItems
           .where('dayKey')
           .below(todayKey)
           .and(item => item.userId === userId)
-          .reverse()
-          .first();
+          .toArray();
 
-        if (lastItem) {
-          const lastDayItems = await db.dayItems
-            .where('dayKey')
-            .equals(lastItem.dayKey)
-            .and(item => item.userId === userId)
-            .toArray();
-          const postponed = lastDayItems.filter(item => item.postponed);
-          if (postponed.length > 0) {
+        if (staleItems.length > 0) {
+          const notBought = new Map<string, DayItemRecord>();
+          for (const item of staleItems) {
+            if (item.checked) continue;
+            const existing = notBought.get(item.itemId);
+            if (!existing || item.updatedAt > existing.updatedAt) {
+              notBought.set(item.itemId, item);
+            }
+          }
+
+          if (notBought.size > 0) {
             const now = Date.now();
             const alreadyToday = new Set(localItems.map(item => item.itemId));
-            const carriedOver = postponed
+            const carriedOver = Array.from(notBought.values())
               .filter(item => !alreadyToday.has(item.itemId))
               .map(item => ({
                 dayKey: todayKey,
@@ -364,9 +374,16 @@ export function useDayState(user: User | null) {
 
       if (isOnline) {
         try {
-          const [remoteItems, cutoffAt] = await Promise.all([
+          const [remoteItems, cutoffAt, remoteStaleItems] = await Promise.all([
             loadDayStateFromSupabase(todayKey, userId),
             fetchAndStoreResetCutoff(userId, todayKey, 'compras'),
+            // Recovery path for items stranded on a day this device never
+            // stored locally (added from another device, or storage got
+            // cleared here) — pulls anything still unchecked from earlier
+            // days straight out of Supabase. Best-effort: a null result
+            // here (offline blip, RLS hiccup) just skips recovery, it never
+            // blocks the normal today-sync below.
+            loadStaleUnfinishedItemsFromSupabase(userId, todayKey),
           ]);
           if (cancelled) return;
           if (remoteItems) {
@@ -383,7 +400,7 @@ export function useDayState(user: User | null) {
             if (cancelled) return;
 
             const merged = mergeDayItemsWithLWW(freshLocalItems, remoteItems, cutoffAt);
-            const userMerged = merged.filter(item => item.userId === userId);
+            let userMerged = merged.filter(item => item.userId === userId);
 
             // AUD-001: anything the cutoff dropped must also leave Dexie —
             // otherwise this device's own stale copy lingers locally and can
@@ -392,6 +409,45 @@ export function useDayState(user: User | null) {
             const staleIds = freshLocalItems.filter(item => !survivingIds.has(item.itemId)).map(item => item.itemId);
             if (staleIds.length > 0) {
               await db.dayItems.bulkDelete(staleIds.map(id => [todayKey, id] as [string, string]));
+            }
+
+            if (remoteStaleItems && remoteStaleItems.length > 0) {
+              const alreadyToday = new Set(userMerged.map(item => item.itemId));
+              const notBought = new Map<string, DayItemRecord>();
+              for (const item of remoteStaleItems) {
+                if (alreadyToday.has(item.itemId)) continue;
+                const existing = notBought.get(item.itemId);
+                if (!existing || item.updatedAt > existing.updatedAt) {
+                  notBought.set(item.itemId, item);
+                }
+              }
+
+              if (notBought.size > 0) {
+                const now = Date.now();
+                const recovered: DayItemRecord[] = Array.from(notBought.values()).map(item => ({
+                  dayKey: todayKey,
+                  itemId: item.itemId,
+                  checked: false,
+                  postponed: false,
+                  inToday: true,
+                  updatedAt: now,
+                  userId,
+                }));
+
+                userMerged = [...userMerged, ...recovered];
+                // Raw db.syncQueue.add (not addToSyncQueueLocal, which is
+                // declared later in this hook and out of scope here) —
+                // matches the local carry-over above; the next queue drain
+                // picks these up like any other pending entry.
+                for (const item of recovered) {
+                  await db.syncQueue.add({
+                    type: 'unpostpone',
+                    dayKey: todayKey,
+                    itemId: item.itemId,
+                    timestamp: now,
+                  });
+                }
+              }
             }
 
             await db.dayItems.bulkPut(userMerged);
