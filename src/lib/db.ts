@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { logSyncFailure } from './logger';
+import type { SkyPeriod } from './rotinaSteps';
 
 // ─── Supabase config ───────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -88,12 +89,13 @@ export interface RotinaSyncQueueEntry {
 }
 
 // ─── Agenda mode records ────────────────────────────────────────────
-// Unlike grocery items (growable named catalog) or rotina steps (fixed
-// slugs), an agenda task is a single self-contained per-day row. Deletion is
-// modeled as just another field (`deleted`) synced through the same
-// conditional "newer wins" RPC as every other edit, instead of a real row
-// delete — so a delete can never race-resurrect a newer edit (or vice
-// versa) without extra cutoff-timestamp machinery. See agendaDb.ts.
+// Unlike grocery items (growable named catalog) or rotina step DEFINITIONS
+// (user-editable but not day-scoped, see RotinaStepDefRecord below), an
+// agenda task is a single self-contained per-day row. Deletion is modeled as
+// just another field (`deleted`) synced through the same conditional "newer
+// wins" RPC as every other edit, instead of a real row delete — so a delete
+// can never race-resurrect a newer edit (or vice versa) without extra
+// cutoff-timestamp machinery. See agendaDb.ts.
 export interface AgendaTaskRecord {
   id: string; // uuid v4
   dayKey: string; // "YYYY-MM-DD" — agenda tasks never carry over to the next day
@@ -114,6 +116,40 @@ export interface AgendaSyncQueueEntry {
   id?: number;
   type: 'upsert'; // a single type is enough — every mutation just re-reads and pushes the whole row
   taskId: string;
+  // AUD-009 — see SyncQueueEntry.userId above for why this is optional.
+  userId?: string;
+  timestamp: number;
+  attemptCount?: number;
+}
+
+// ─── Rotina step definitions ────────────────────────────────────────
+// The Rotina step LIST itself (title/emoji/period/order), as opposed to
+// RotinaStepStateRecord above which only ever held per-day done/not-done
+// state for a list that used to be hardcoded in rotinaSteps.ts. Growable and
+// user-editable like AgendaTaskRecord (soft-delete tombstone, same
+// conditional-upsert sync), but NOT day-scoped — a step definition is a
+// standing part of the routine, not a per-day row.
+//
+// Primary key is [id+userId], not just id: default step ids are stable
+// human slugs ('xixi', 'pesar-se', ...), not UUIDs — a global key would
+// collide the moment two accounts share a browser and both seed the same
+// default slug. Same fix as AUD-009 applied to rotinaStepStateByUser below,
+// just designed in from the start this time instead of retrofitted.
+export interface RotinaStepDefRecord {
+  id: string; // stable slug for a seeded default, crypto.randomUUID() for a user-added step
+  title: string;
+  emoji: string;
+  period: SkyPeriod;
+  order: number;
+  deleted: boolean; // soft-delete tombstone
+  updatedAt: number;
+  userId: string;
+}
+
+export interface RotinaStepDefSyncQueueEntry {
+  id?: number;
+  type: 'upsert'; // single type, same rationale as AgendaSyncQueueEntry
+  stepDefId: string;
   // AUD-009 — see SyncQueueEntry.userId above for why this is optional.
   userId?: string;
   timestamp: number;
@@ -147,6 +183,8 @@ class MercadoDatabase extends Dexie {
   agendaTasks!: Table<AgendaTaskRecord, string>;
   agendaSyncQueue!: Table<AgendaSyncQueueEntry, number>;
   resetCutoffs!: Table<ResetCutoffRecord, [string, string, string]>; // compound key [userId+dayKey+domain]
+  rotinaStepDefs!: Table<RotinaStepDefRecord, [string, string]>; // compound key [id, userId]
+  rotinaStepDefSyncQueue!: Table<RotinaStepDefSyncQueueEntry, number>;
 
   constructor() {
     super('MercadoHoje');
@@ -197,6 +235,14 @@ class MercadoDatabase extends Dexie {
     // qty will return undefined, treated as 1 by the callers.
     this.version(8).stores({
       dayItems: '[dayKey+itemId], dayKey, itemId, checked, postponed, inToday, qty, updatedAt, userId',
+    });
+    // Rotina step DEFINITIONS (title/emoji/period/order), user-editable —
+    // see RotinaStepDefRecord above for why the key is [id+userId] from the
+    // start (learned from AUD-009 above instead of repeating it). Purely
+    // additive: neither store existed before, so no upgrade() copy needed.
+    this.version(9).stores({
+      rotinaStepDefs: '[id+userId], id, userId, order, deleted, updatedAt',
+      rotinaStepDefSyncQueue: '++id, type, stepDefId, timestamp, userId',
     });
   }
 }

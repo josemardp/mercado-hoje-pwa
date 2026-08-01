@@ -3,7 +3,7 @@ import Dexie from 'dexie';
 import { db, getLocalResetCutoff, setLocalResetCutoff } from '../db';
 
 describe('Dexie schema (fake-indexeddb)', () => {
-  it('opens the database and exposes every table across the version chain (2→3→4→5→6→7)', async () => {
+  it('opens the database and exposes every table across the version chain (2→3→4→5→6→7→8→9)', async () => {
     await db.open();
     expect(db.isOpen()).toBe(true);
     expect(db.tables.map(t => t.name).sort()).toEqual([
@@ -12,6 +12,8 @@ describe('Dexie schema (fake-indexeddb)', () => {
       'dayItems',
       'items',
       'resetCutoffs',
+      'rotinaStepDefSyncQueue',
+      'rotinaStepDefs',
       'rotinaStepStateByUser',
       'rotinaSyncQueue',
       'syncQueue',
@@ -187,5 +189,28 @@ describe('Dexie schema (fake-indexeddb)', () => {
     expect(notBought.has('feijao')).toBe(false);
 
     await db.dayItems.where('userId').equals(userId).delete();
+  });
+
+  // ─── Regressão preventiva estilo AUD-009: rotinaStepDefs guarda as
+  // DEFINIÇÕES dos passos da Rotina (título/emoji/período/ordem), editáveis
+  // pelo usuário. Os ids de seed são slugs fixos compartilhados ('xixi',
+  // 'pesar-se', ...), não uuid — exatamente a mesma situação que já causou
+  // colisão entre duas contas no mesmo navegador em rotinaStepStateByUser
+  // (chave trocada de [dayKey+stepId] pra [dayKey+stepId+userId]). Esta
+  // tabela nasceu direto com chave composta [id+userId] pra nunca repetir
+  // esse bug — este teste confirma que duas contas no mesmo navegador nunca
+  // colidem na mesma linha local pro mesmo passo.
+  it('AUD-009-like: duas contas diferentes têm linhas locais separadas para o mesmo passo (mesmo id) da Rotina', async () => {
+    await db.rotinaStepDefs.put({
+      id: 'xixi', title: 'Xixi', emoji: '🚽', period: 'morning', order: 1, deleted: false, updatedAt: 100, userId: 'user-a',
+    });
+    await db.rotinaStepDefs.put({
+      id: 'xixi', title: 'Ir ao banheiro', emoji: '🚽', period: 'morning', order: 1, deleted: false, updatedAt: 200, userId: 'user-b',
+    });
+    const rowsForXixi = await db.rotinaStepDefs.where('id').equals('xixi').toArray();
+    expect(rowsForXixi).toHaveLength(2);
+    expect(rowsForXixi.find(r => r.userId === 'user-a')?.title).toBe('Xixi');
+    expect(rowsForXixi.find(r => r.userId === 'user-b')?.title).toBe('Ir ao banheiro');
+    await db.rotinaStepDefs.where('id').equals('xixi').delete();
   });
 });

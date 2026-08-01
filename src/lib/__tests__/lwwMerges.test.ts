@@ -4,6 +4,8 @@ import { mergeRotinaStateWithLWW } from '../rotinaDb';
 import type { RotinaStepStateRecord } from '../db';
 import { mergeAgendaTasksWithLWW } from '../agendaDb';
 import type { AgendaTaskRecord } from '../db';
+import { mergeRotinaStepDefsWithLWW } from '../rotinaStepDefsDb';
+import type { RotinaStepDefRecord } from '../db';
 
 const USER = 'user-1';
 
@@ -115,5 +117,44 @@ describe('mergeAgendaTasksWithLWW', () => {
     const remoteDeleted = [agendaTask({ id: 't1', updatedAt: 200, deleted: true })];
     const merged = mergeAgendaTasksWithLWW(localEdited, remoteDeleted);
     expect(merged.find(t => t.id === 't1')?.deleted).toBe(true);
+  });
+});
+
+function rotinaStepDef(partial: Partial<RotinaStepDefRecord> & Pick<RotinaStepDefRecord, 'id' | 'updatedAt'>): RotinaStepDefRecord {
+  return {
+    title: 'Xixi',
+    emoji: '🚽',
+    period: 'morning',
+    order: 0,
+    deleted: false,
+    userId: USER,
+    ...partial,
+  };
+}
+
+// Structurally the same tombstone-safe merge as mergeAgendaTasksWithLWW
+// above — see RotinaStepDefRecord in db.ts for why step definitions
+// (user-editable, growable) follow the Agenda soft-delete model instead of
+// Compras/Rotina's reset-cutoff model.
+describe('mergeRotinaStepDefsWithLWW', () => {
+  it('picks the newer of two conflicting edits for the same step', () => {
+    const local = [rotinaStepDef({ id: 'xixi', updatedAt: 100, title: 'Xixi' })];
+    const remote = [rotinaStepDef({ id: 'xixi', updatedAt: 200, title: 'Ir ao banheiro' })];
+    const merged = mergeRotinaStepDefsWithLWW(local, remote);
+    expect(merged.find(s => s.id === 'xixi')?.title).toBe('Ir ao banheiro');
+  });
+
+  it('keeps a newer soft-delete over an older edit', () => {
+    const localEdited = [rotinaStepDef({ id: 'xixi', updatedAt: 100, deleted: false })];
+    const remoteDeleted = [rotinaStepDef({ id: 'xixi', updatedAt: 200, deleted: true })];
+    const merged = mergeRotinaStepDefsWithLWW(localEdited, remoteDeleted);
+    expect(merged.find(s => s.id === 'xixi')?.deleted).toBe(true);
+  });
+
+  it('keeps a newer reorder over an older one', () => {
+    const local = [rotinaStepDef({ id: 'xixi', updatedAt: 100, order: 0 })];
+    const remote = [rotinaStepDef({ id: 'xixi', updatedAt: 200, order: 5 })];
+    const merged = mergeRotinaStepDefsWithLWW(local, remote);
+    expect(merged.find(s => s.id === 'xixi')?.order).toBe(5);
   });
 });

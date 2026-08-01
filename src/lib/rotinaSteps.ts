@@ -1,3 +1,10 @@
+// Rotina steps are now user-editable at runtime (see useRotinaStepDefs.ts /
+// rotinaStepDefsDb.ts, backed by the mh_rotina_steps table) — this array is
+// no longer the rendered list, RotinaTab.tsx reads from that hook instead.
+// It survives as the literal SEED data: seedDefaultRotinaSteps() copies it
+// verbatim (same ids/titles/emojis/order) into a user's first-ever step
+// list, so already-recorded completion history (keyed against these exact
+// ids) keeps lining up after the switch to the editable table.
 export type SkyPeriod = 'dawn' | 'morning' | 'afternoon' | 'dusk' | 'night';
 
 export interface RotinaStep {
@@ -27,7 +34,3 @@ export const ROTINA_STEPS: RotinaStep[] = [
   { id: 'tomar-lamitor', order: 13, title: 'Tomar Lamitor', emoji: '💊', period: 'night' },
   { id: 'orar-noite', order: 14, title: 'Orar', emoji: '🙏', period: 'night' },
 ];
-
-export function getRotinaStepById(id: string): RotinaStep | undefined {
-  return ROTINA_STEPS.find(s => s.id === id);
-}
