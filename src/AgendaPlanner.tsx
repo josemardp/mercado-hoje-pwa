@@ -5,6 +5,19 @@ import { FLOOR_MINUTES } from './lib/agendaDurationEstimator';
 
 type AgendaPlannerProps = ReturnType<typeof useAgendaState>;
 
+// Cycled by card index (not per-task identity) — a colorful accent per
+// card, echoing the pink/orange gradient badges already used in Rotina
+// fixa, without needing a category to key off of (agenda tasks are
+// freeform, unlike Compras' categorized items).
+const CARD_PALETTE = [
+  { grad: 'linear-gradient(135deg, #FF6B9D, #FFB347)', tint: 'linear-gradient(135deg, rgba(255,107,157,0.22), rgba(255,179,71,0.12))' },
+  { grad: 'linear-gradient(135deg, #4FACFE, #00F2FE)', tint: 'linear-gradient(135deg, rgba(79,172,254,0.22), rgba(0,242,254,0.12))' },
+  { grad: 'linear-gradient(135deg, #A78BFA, #F472B6)', tint: 'linear-gradient(135deg, rgba(167,139,250,0.22), rgba(244,114,182,0.12))' },
+  { grad: 'linear-gradient(135deg, #43E97B, #38F9D7)', tint: 'linear-gradient(135deg, rgba(67,233,123,0.22), rgba(56,249,215,0.12))' },
+  { grad: 'linear-gradient(135deg, #FFAA33, #FFE066)', tint: 'linear-gradient(135deg, rgba(255,170,51,0.22), rgba(255,224,102,0.12))' },
+  { grad: 'linear-gradient(135deg, #6C63FF, #4FACFE)', tint: 'linear-gradient(135deg, rgba(108,99,255,0.22), rgba(79,172,254,0.12))' },
+];
+
 function nowHHMM(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -250,26 +263,78 @@ export default function AgendaPlanner({
       ) : tasks.length === 0 ? (
         <div className="rotina-step-count">Nenhuma tarefa ainda — adicione acima.</div>
       ) : (
-        <div className="agenda-table-wrap">
-        <table className="agenda-table">
-          <thead>
-            <tr>
-              <th>Nº</th>
-              <th>Horário</th>
-              <th>Duração</th>
-              <th>Tarefa</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedTasks.map((task, index) => {
-              const isScheduled = !!task.scheduledStart;
-              if (isScheduled) scheduledIndex++;
-              return (
-                <tr key={task.id} className={`agenda-task-row${task.done ? ' agenda-task-done' : ''}`}>
-                  <td>{isScheduled ? String(scheduledIndex).padStart(2, '0') : '—'}</td>
-                  <td>
-                    {isScheduled ? `${task.scheduledStart}–${task.scheduledEnd}` : task.fixed ? (
+        <div className="agenda-task-list">
+          {sortedTasks.map((task, index) => {
+            const isScheduled = !!task.scheduledStart;
+            if (isScheduled) scheduledIndex++;
+            const palette = CARD_PALETTE[index % CARD_PALETTE.length];
+            return (
+              <div
+                key={task.id}
+                className={`agenda-task-card${task.done ? ' agenda-task-card-done' : ''}`}
+                style={{ background: `${palette.tint}, rgba(15, 12, 28, 0.6)` }}
+              >
+                <button
+                  className="agenda-task-check"
+                  style={task.done ? { background: palette.grad, borderColor: 'transparent' } : undefined}
+                  onClick={() => toggleDone(task.id)}
+                  aria-label={`Marcar "${task.title}" como concluída`}
+                  aria-pressed={task.done}
+                  title="Concluída"
+                >
+                  {task.done ? '✓' : ''}
+                </button>
+
+                <div className="agenda-task-main">
+                  <div className="agenda-task-top">
+                    <input
+                      className="agenda-task-title-input"
+                      type="text"
+                      value={titleDrafts[task.id] ?? task.title}
+                      onChange={e => setTitleDrafts(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      onBlur={() => commitTitle(task.id)}
+                      aria-label="Título da tarefa"
+                    />
+                    <div className="agenda-task-actions">
+                      {!hasScheduleAny && (
+                        <span className="agenda-reorder-btns">
+                          <button
+                            className="agenda-reorder-btn"
+                            onClick={() => moveTask(task.id, -1)}
+                            disabled={index === 0}
+                            aria-label={`Mover "${task.title}" pra cima`}
+                            title="Mover pra cima"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            className="agenda-reorder-btn"
+                            onClick={() => moveTask(task.id, 1)}
+                            disabled={index === sortedTasks.length - 1}
+                            aria-label={`Mover "${task.title}" pra baixo`}
+                            title="Mover pra baixo"
+                          >
+                            ▼
+                          </button>
+                        </span>
+                      )}
+                      <button
+                        className="agenda-remove-btn"
+                        onClick={() => removeTask(task.id)}
+                        aria-label={`Remover "${task.title}"`}
+                        title="Remover"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="agenda-task-meta">
+                    {isScheduled ? (
+                      <span className="agenda-task-time-badge" style={{ background: palette.grad }}>
+                        {String(scheduledIndex).padStart(2, '0')} · {task.scheduledStart}–{task.scheduledEnd}
+                      </span>
+                    ) : task.fixed ? (
                       <input
                         className="agenda-fixed-time-input"
                         type="time"
@@ -281,13 +346,14 @@ export default function AgendaPlanner({
                         }}
                         aria-label={`Horário do compromisso fixo "${task.title}"`}
                       />
-                    ) : '—'}
-                  </td>
-                  <td>
+                    ) : null}
+
                     {isScheduled ? (
-                      formatDurationLabel(Math.round(
-                        (toMinutesForDisplay(task.scheduledEnd!) - toMinutesForDisplay(task.scheduledStart!))
-                      ))
+                      <span className="agenda-task-duration">
+                        {formatDurationLabel(Math.round(
+                          (toMinutesForDisplay(task.scheduledEnd!) - toMinutesForDisplay(task.scheduledStart!))
+                        ))}
+                      </span>
                     ) : (
                       <input
                         className="agenda-duration-input"
@@ -298,17 +364,10 @@ export default function AgendaPlanner({
                         onChange={e => setDurationDrafts(prev => ({ ...prev, [task.id]: Number(e.target.value) }))}
                         onBlur={() => commitDuration(task.id)}
                         disabled={task.fixed}
+                        aria-label={`Duração de "${task.title}"`}
                       />
                     )}
-                  </td>
-                  <td>
-                    <input
-                      className="agenda-title-edit"
-                      type="text"
-                      value={titleDrafts[task.id] ?? task.title}
-                      onChange={e => setTitleDrafts(prev => ({ ...prev, [task.id]: e.target.value }))}
-                      onBlur={() => commitTitle(task.id)}
-                    />
+
                     <button
                       className={`agenda-fixed-badge${task.fixed ? ' agenda-fixed-on' : ''}`}
                       onClick={() => {
@@ -327,51 +386,11 @@ export default function AgendaPlanner({
                     >
                       {task.fixed ? 'fixo' : 'flexível'}
                     </button>
-                  </td>
-                  <td className="agenda-row-actions">
-                    {!hasScheduleAny && (
-                      <span className="agenda-reorder-btns">
-                        <button
-                          className="agenda-reorder-btn"
-                          onClick={() => moveTask(task.id, -1)}
-                          disabled={index === 0}
-                          aria-label={`Mover "${task.title}" pra cima`}
-                          title="Mover pra cima"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          className="agenda-reorder-btn"
-                          onClick={() => moveTask(task.id, 1)}
-                          disabled={index === sortedTasks.length - 1}
-                          aria-label={`Mover "${task.title}" pra baixo`}
-                          title="Mover pra baixo"
-                        >
-                          ▼
-                        </button>
-                      </span>
-                    )}
-                    <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => toggleDone(task.id)}
-                      aria-label={`Marcar "${task.title}" como concluída`}
-                      title="Concluída"
-                    />
-                    <button
-                      className="agenda-remove-btn"
-                      onClick={() => removeTask(task.id)}
-                      aria-label={`Remover "${task.title}"`}
-                      title="Remover"
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
