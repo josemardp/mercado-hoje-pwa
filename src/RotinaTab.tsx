@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { useRotinaState } from './lib/useRotinaState';
 import type { useRotinaStepDefs } from './lib/useRotinaStepDefs';
 import type { useAgendaState } from './lib/useAgendaState';
+import type { useGoMode } from './lib/useGoMode';
 import type { RotinaStepDefRecord } from './lib/db';
 import { getSkyPresetForStep, getAmbientSkyPreset, type SkyPreset } from './lib/rotinaSky';
 import { formatDateBR, getTodayKey } from './lib/categories';
@@ -40,11 +41,12 @@ function firstIncomplete(steps: RotinaStepDefRecord[], done: Record<string, bool
 type RotinaTabProps = ReturnType<typeof useRotinaState> & {
   stepDefs: ReturnType<typeof useRotinaStepDefs>;
   agenda: ReturnType<typeof useAgendaState>;
+  goMode: ReturnType<typeof useGoMode>;
 };
 
 export default function RotinaTab({
   done, loading, syncStatus, toggleStep, resetToday,
-  stuckSyncCount, retryStuckEntries, stepDefs, agenda,
+  stuckSyncCount, retryStuckEntries, stepDefs, agenda, goMode,
 }: RotinaTabProps) {
   const { steps } = stepDefs;
   const [mode, setModeState] = useState<'fixa' | 'agenda'>('fixa');
@@ -344,7 +346,7 @@ export default function RotinaTab({
           aria-labelledby={mode === 'agenda' ? 'rotina-mode-tab-agenda' : 'rotina-mode-tab-fixa'}
         >
         {mode === 'agenda' ? (
-          <AgendaPlanner {...agenda} />
+          <AgendaPlanner {...agenda} goMode={goMode} />
         ) : (
         <>
         <div className="rotina-main">

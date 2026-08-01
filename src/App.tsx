@@ -9,6 +9,7 @@ import { classifyItem } from './lib/classifyCategory';
 import { useRotinaState } from './lib/useRotinaState';
 import { useRotinaStepDefs } from './lib/useRotinaStepDefs';
 import { useAgendaState } from './lib/useAgendaState';
+import { useGoMode } from './lib/useGoMode';
 import Modal from './Modal';
 import { logError } from './lib/logger';
 import { fetchUserDataForExport, downloadJSON } from './lib/exportData';
@@ -214,6 +215,7 @@ function AppInner() {
   const rotinaState = useRotinaState(user);
   const rotinaStepDefs = useRotinaStepDefs(user);
   const agendaState = useAgendaState(user);
+  const goModeState = useGoMode(user, agendaState.tasks, agendaState.loading, agendaState.toggleDone);
 
   // AUD-010: "Limpar marcações" used to fire resetAll() (which wipes the
   // whole day's list, not just the checkmarks the label implied) with zero
@@ -961,7 +963,7 @@ function AppInner() {
       >
         {activeTab === 'rotina' ? (
           <Suspense fallback={null}>
-            <RotinaTab {...rotinaState} stepDefs={rotinaStepDefs} agenda={agendaState} />
+            <RotinaTab {...rotinaState} stepDefs={rotinaStepDefs} agenda={agendaState} goMode={goModeState} />
           </Suspense>
         ) : (
         <>
