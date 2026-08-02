@@ -309,6 +309,10 @@ export function useAgendaState(user: User | null) {
   // toggling fixed off and back on — which itself used to lose the time,
   // see toggleFixed above and the UI-side memory in AgendaPlanner.tsx).
   const updateFixedStart = useCallback((id: string, fixedStart: string) => patchTask(id, { fixed: true, fixedStart }), [patchTask]);
+  // Lets the long-press edit modal move an already-scheduled card's slot
+  // directly, without re-running the scheduler.
+  const updateScheduledTime = useCallback((id: string, start: string, end: string) =>
+    patchTask(id, { scheduledStart: start, scheduledEnd: end }), [patchTask]);
   const toggleDone = useCallback((id: string) => {
     const existing = tasks.find(t => t.id === id);
     if (!existing) return Promise.resolve();
@@ -342,6 +346,48 @@ export function useAgendaState(user: User | null) {
     setTasks(prev => prev.map(t => (t.id === updatedA.id ? updatedA : t.id === updatedB.id ? updatedB : t)));
     await persistTask(updatedA);
     await persistTask(updatedB);
+  }, [tasks, persistTask]);
+
+  // Persists the on-screen order produced by AgendaPlanner's long-press
+  // drag. Once the day is scheduled, sortedTasks displays cards by
+  // scheduledStart (not `order`) — so dragging there has to reassign which
+  // task occupies which time slot, not just bump `order`, or the visual
+  // list wouldn't actually move. Slots themselves (the set of start/end
+  // pairs) are preserved as-is; only their task assignment changes.
+  const reorderTasks = useCallback(async (newOrderIds: string[]) => {
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    const isScheduled = tasks.some(t => t.scheduledStart);
+    const now = Date.now();
+
+    let updated: AgendaTaskRecord[];
+    if (isScheduled) {
+      const slots = tasks
+        .filter(t => t.scheduledStart && t.scheduledEnd)
+        .slice()
+        .sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''))
+        .map(t => ({ scheduledStart: t.scheduledStart, scheduledEnd: t.scheduledEnd }));
+      let slotIdx = 0;
+      updated = newOrderIds.reduce<AgendaTaskRecord[]>((acc, id, i) => {
+        const t = byId.get(id);
+        if (!t) return acc;
+        if (t.scheduledStart && t.scheduledEnd) {
+          acc.push({ ...t, ...slots[slotIdx++], order: i, updatedAt: now });
+        } else {
+          acc.push({ ...t, order: i, updatedAt: now });
+        }
+        return acc;
+      }, []);
+    } else {
+      updated = newOrderIds.reduce<AgendaTaskRecord[]>((acc, id, i) => {
+        const t = byId.get(id);
+        if (t) acc.push({ ...t, order: i, updatedAt: now });
+        return acc;
+      }, []);
+    }
+
+    const updatedById = new Map(updated.map(t => [t.id, t]));
+    setTasks(prev => prev.map(t => updatedById.get(t.id) ?? t));
+    for (const t of updated) await persistTask(t);
   }, [tasks, persistTask]);
 
   // Soft-deletes every task in today's agenda — the "reiniciar" action for
@@ -406,8 +452,10 @@ export function useAgendaState(user: User | null) {
     updateTaskDuration,
     toggleFixed,
     updateFixedStart,
+    updateScheduledTime,
     removeTask,
     moveTask,
+    reorderTasks,
     clearAll,
     toggleDone,
     generateSchedule,
