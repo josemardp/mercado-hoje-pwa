@@ -311,13 +311,22 @@ export function useDayState(user: User | null) {
           .toArray();
 
         if (staleItems.length > 0) {
-          const notBought = new Map<string, DayItemRecord>();
+          // Resolve to the single most-recent row per item across ALL stale
+          // days first, then decide from THAT row alone — each day keeps its
+          // own row for the same item (never updates a shared one), so an
+          // old stranded unchecked row from before the item was carried
+          // forward would otherwise always win here and resurrect an item
+          // forever even after it was bought on a later day.
+          const latestByItem = new Map<string, DayItemRecord>();
           for (const item of staleItems) {
-            if (item.checked) continue;
-            const existing = notBought.get(item.itemId);
+            const existing = latestByItem.get(item.itemId);
             if (!existing || item.updatedAt > existing.updatedAt) {
-              notBought.set(item.itemId, item);
+              latestByItem.set(item.itemId, item);
             }
+          }
+          const notBought = new Map<string, DayItemRecord>();
+          for (const [itemId, item] of latestByItem) {
+            if (!item.checked) notBought.set(itemId, item);
           }
 
           if (notBought.size > 0) {
@@ -413,13 +422,21 @@ export function useDayState(user: User | null) {
 
             if (remoteStaleItems && remoteStaleItems.length > 0) {
               const alreadyToday = new Set(userMerged.map(item => item.itemId));
-              const notBought = new Map<string, DayItemRecord>();
+              // Same latest-row-per-item resolution as the local carry-over
+              // above — remoteStaleItems now includes checked rows too (see
+              // loadStaleUnfinishedItemsFromSupabase), so this must pick the
+              // most recent row per item before checking its checked state.
+              const latestByItem = new Map<string, DayItemRecord>();
               for (const item of remoteStaleItems) {
                 if (alreadyToday.has(item.itemId)) continue;
-                const existing = notBought.get(item.itemId);
+                const existing = latestByItem.get(item.itemId);
                 if (!existing || item.updatedAt > existing.updatedAt) {
-                  notBought.set(item.itemId, item);
+                  latestByItem.set(item.itemId, item);
                 }
+              }
+              const notBought = new Map<string, DayItemRecord>();
+              for (const [itemId, item] of latestByItem) {
+                if (!item.checked) notBought.set(itemId, item);
               }
 
               if (notBought.size > 0) {
