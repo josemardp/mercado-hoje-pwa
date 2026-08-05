@@ -496,6 +496,14 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
  * there while the device that made them was online. Deliberately ignores
  * per-day reset cutoffs: an explicit "Limpar lista do dia" already deletes
  * the underlying rows, so nothing here could resurrect them anyway.
+ *
+ * Returns ALL stale rows for the user, checked or not — NOT just unchecked
+ * ones. Each day keeps its own row per item instead of updating a shared
+ * one, so filtering to checked=false here would return an old stranded
+ * unchecked row for an item that was already bought on a later day just as
+ * readily as a genuinely-still-pending one. The caller must resolve to the
+ * single most-recent row per item first, then check THAT row's checked
+ * state (see useDayState's load()).
  */
 export async function loadStaleUnfinishedItemsFromSupabase(userId: string, beforeDayKey: string): Promise<DayItemRecord[] | null> {
   try {
@@ -503,8 +511,7 @@ export async function loadStaleUnfinishedItemsFromSupabase(userId: string, befor
       .from('mh_day_items')
       .select('*')
       .lt('day_key', beforeDayKey)
-      .eq('user_id', userId)
-      .eq('checked', false);
+      .eq('user_id', userId);
 
     if (error || !data) return null;
 

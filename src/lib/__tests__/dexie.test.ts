@@ -166,6 +166,13 @@ describe('Dexie schema (fake-indexeddb)', () => {
       { dayKey: '2026-07-30', itemId: 'feijao', checked: true, postponed: false, inToday: true, updatedAt: 100, userId },
       { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId },
       { dayKey: '2026-07-31', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
+      // 'acucar' ficou pendente em 07-29 (linha nunca apagada) e só foi
+      // marcado como comprado em 07-31, numa linha NOVA (cada dia tem sua
+      // própria linha — nada atualiza a antiga). Reproduz o bug relatado:
+      // item concluído reaparecendo como pendente no dia seguinte porque a
+      // linha velha "não comprado" ainda existia no banco.
+      { dayKey: '2026-07-29', itemId: 'acucar', checked: false, postponed: false, inToday: true, updatedAt: 50, userId },
+      { dayKey: '2026-07-31', itemId: 'acucar', checked: true, postponed: false, inToday: true, updatedAt: 400, userId },
     ]);
 
     const staleItems = await db.dayItems
@@ -174,13 +181,18 @@ describe('Dexie schema (fake-indexeddb)', () => {
       .and(item => item.userId === userId)
       .toArray();
 
-    const notBought = new Map<string, (typeof staleItems)[number]>();
+    // Resolve to the single most-recent row per item first, then decide
+    // "not bought" from THAT row alone — matches the fix in useStore.ts.
+    const latestByItem = new Map<string, (typeof staleItems)[number]>();
     for (const item of staleItems) {
-      if (item.checked) continue;
-      const existing = notBought.get(item.itemId);
+      const existing = latestByItem.get(item.itemId);
       if (!existing || item.updatedAt > existing.updatedAt) {
-        notBought.set(item.itemId, item);
+        latestByItem.set(item.itemId, item);
       }
+    }
+    const notBought = new Map<string, (typeof staleItems)[number]>();
+    for (const [itemId, item] of latestByItem) {
+      if (!item.checked) notBought.set(itemId, item);
     }
 
     expect([...notBought.keys()].sort()).toEqual(['arroz', 'leite']);
@@ -188,6 +200,9 @@ describe('Dexie schema (fake-indexeddb)', () => {
     expect(notBought.get('arroz')?.dayKey).toBe('2026-07-31');
     // 'feijao' was bought (checked=true), so it must never come back.
     expect(notBought.has('feijao')).toBe(false);
+    // 'acucar' has an old unchecked row, but its most recent row (07-31) is
+    // checked=true — it must not resurrect as pending.
+    expect(notBought.has('acucar')).toBe(false);
 
     await db.dayItems.where('userId').equals(userId).delete();
   });
