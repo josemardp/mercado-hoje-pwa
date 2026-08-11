@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Dexie from 'dexie';
-import { db, getLocalResetCutoff, setLocalResetCutoff } from '../db';
+import { db, getLocalResetCutoff, setLocalResetCutoff, selectCarryOverItems } from '../db';
 
 describe('Dexie schema (fake-indexeddb)', () => {
   it('opens the database and exposes every table across the version chain (2→3→4→5→6→7→8→9→10)', async () => {
@@ -151,28 +151,32 @@ describe('Dexie schema (fake-indexeddb)', () => {
     await db.resetCutoffs.delete(['user-1', '2026-07-30', 'rotina']);
   });
 
-  // ─── Regressão: itens da lista de Compras que não foram comprados nem
-  // marcados como "adiados" sumiam na virada do dia — useDayState só
-  // carregava itens do dayKey de hoje e só arrastava pro dia seguinte quem
-  // tinha postponed=true, então um item só "na lista" (nem comprado, nem
-  // adiado) ficava preso pra sempre no dayKey de ontem. Este teste cobre a
-  // query que a correção usa: varrer todo dayKey < hoje (não só o mais
-  // recente) e trazer tudo que não foi comprado, deduplicando por item.
-  it('itens não comprados de qualquer dia anterior (adiados ou não) são candidatos a carry-over; comprados não', async () => {
+  // ─── Regra do carry-over de Compras: só volta pro dia seguinte o que foi
+  // explicitamente ADIADO. Item comprado fica nos concluídos do dia da
+  // compra e não pode reaparecer como pendente (bug relatado), e item que
+  // ficou só pendente, sem adiar, também não é arrastado. A query varre
+  // todo dayKey < hoje (não só o mais recente), pra cobrir vários dias sem
+  // abrir o app, e selectCarryOverItems resolve a linha mais recente de
+  // cada item antes de decidir.
+  it('só itens adiados voltam no dia seguinte; comprados e pendentes-sem-adiar não', async () => {
     const userId = 'user-carryover';
     const today = '2026-08-01';
     await db.dayItems.bulkAdd([
+      // pendente, nunca adiado — não volta
       { dayKey: '2026-07-30', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 100, userId },
+      // comprado — não volta
       { dayKey: '2026-07-30', itemId: 'feijao', checked: true, postponed: false, inToday: true, updatedAt: 100, userId },
+      // adiado — volta
       { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId },
-      { dayKey: '2026-07-31', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
-      // 'acucar' ficou pendente em 07-29 (linha nunca apagada) e só foi
-      // marcado como comprado em 07-31, numa linha NOVA (cada dia tem sua
-      // própria linha — nada atualiza a antiga). Reproduz o bug relatado:
-      // item concluído reaparecendo como pendente no dia seguinte porque a
-      // linha velha "não comprado" ainda existia no banco.
-      { dayKey: '2026-07-29', itemId: 'acucar', checked: false, postponed: false, inToday: true, updatedAt: 50, userId },
+      // adiado em 07-29 e comprado em 07-31, cada dia na sua própria linha
+      // (nada atualiza a antiga): a linha velha "adiado / não comprado"
+      // ainda existe no banco e não pode ressuscitar o item.
+      { dayKey: '2026-07-29', itemId: 'acucar', checked: false, postponed: true, inToday: false, updatedAt: 50, userId },
       { dayKey: '2026-07-31', itemId: 'acucar', checked: true, postponed: false, inToday: true, updatedAt: 400, userId },
+      // adiado em 07-29, voltou como pendente em 07-31 e ficou sem comprar:
+      // a linha mais recente não está adiada, então não volta de novo.
+      { dayKey: '2026-07-29', itemId: 'cafe', checked: false, postponed: true, inToday: false, updatedAt: 60, userId },
+      { dayKey: '2026-07-31', itemId: 'cafe', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
     ]);
 
     const staleItems = await db.dayItems
@@ -181,30 +185,24 @@ describe('Dexie schema (fake-indexeddb)', () => {
       .and(item => item.userId === userId)
       .toArray();
 
-    // Resolve to the single most-recent row per item first, then decide
-    // "not bought" from THAT row alone — matches the fix in useStore.ts.
-    const latestByItem = new Map<string, (typeof staleItems)[number]>();
-    for (const item of staleItems) {
-      const existing = latestByItem.get(item.itemId);
-      if (!existing || item.updatedAt > existing.updatedAt) {
-        latestByItem.set(item.itemId, item);
-      }
-    }
-    const notBought = new Map<string, (typeof staleItems)[number]>();
-    for (const [itemId, item] of latestByItem) {
-      if (!item.checked) notBought.set(itemId, item);
-    }
+    const toCarry = selectCarryOverItems(staleItems);
 
-    expect([...notBought.keys()].sort()).toEqual(['arroz', 'leite']);
-    // 'arroz' appears in two stale days — the more recent (07-31) row wins.
-    expect(notBought.get('arroz')?.dayKey).toBe('2026-07-31');
-    // 'feijao' was bought (checked=true), so it must never come back.
-    expect(notBought.has('feijao')).toBe(false);
-    // 'acucar' has an old unchecked row, but its most recent row (07-31) is
-    // checked=true — it must not resurrect as pending.
-    expect(notBought.has('acucar')).toBe(false);
+    expect(toCarry.map(item => item.itemId)).toEqual(['leite']);
+    expect(toCarry[0].dayKey).toBe('2026-07-31');
 
     await db.dayItems.where('userId').equals(userId).delete();
+  });
+
+  // Linha remota desatualizada não ressuscita item já comprado: a compra
+  // foi marcada neste aparelho (linha local mais nova) mas o sync ainda não
+  // subiu, então o Supabase continua devolvendo a linha antiga "adiado".
+  it('carry-over com linhas local+remota misturadas: a mais recente do item vence', () => {
+    const userId = 'user-carryover-lww';
+    const remota = { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId };
+    const local = { dayKey: '2026-07-31', itemId: 'leite', checked: true, postponed: true, inToday: true, updatedAt: 500, userId };
+
+    expect(selectCarryOverItems([remota])).toHaveLength(1);
+    expect(selectCarryOverItems([local, remota])).toEqual([]);
   });
 
   // ─── Regressão preventiva estilo AUD-009: rotinaStepDefs guarda as

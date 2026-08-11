@@ -3,6 +3,7 @@ import { type User } from '@supabase/supabase-js';
 import {
   db, supabase, type DayItemRecord, type ItemRecord, type SyncQueueEntry,
   syncDayItemToSupabase, loadDayStateFromSupabase, loadStaleUnfinishedItemsFromSupabase, mergeDayItemsWithLWW,
+  selectCarryOverItems,
   processSyncQueue, syncCategoryToSupabase, compactSyncQueueEntries,
   initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
   fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain,
@@ -286,6 +287,10 @@ export function useDayState(user: User | null) {
       // block below even if the try block throws before ever assigning to it.
       // eslint-disable-next-line no-useless-assignment
       let localItems: DayItemRecord[] = [];
+      // Same reasoning as localItems: the online block below reuses this
+      // snapshot to weigh what Supabase reports about earlier days against
+      // what this device already knows about those same days.
+      let staleItems: DayItemRecord[] = [];
 
       try {
         setLoading(true);
@@ -296,43 +301,24 @@ export function useDayState(user: User | null) {
           .and(item => item.userId === userId)
           .toArray();
 
-        // Carry over every item that wasn't bought yet — not just the ones
-        // explicitly "adiados". Previously only postponed=true items rolled
-        // into the new day, so an item added today and left unchecked (never
-        // marked postponed) was stranded in yesterday's dayKey forever: gone
-        // from the list, gone from "concluídos", with no trace anywhere.
-        // Scanning every stale day (not just the single most recent one)
-        // also covers the case where the app wasn't opened for more than one
-        // day in a row.
-        const staleItems = await db.dayItems
+        // Só os itens ADIADOS voltam pro dia seguinte (ver
+        // selectCarryOverItems): comprado fica nos concluídos do dia em que
+        // foi comprado, e pendente-sem-adiar não é arrastado. Varrer TODO
+        // dayKey anterior (não só o mais recente) cobre o caso de ficar
+        // vários dias sem abrir o app.
+        staleItems = await db.dayItems
           .where('dayKey')
           .below(todayKey)
           .and(item => item.userId === userId)
           .toArray();
 
         if (staleItems.length > 0) {
-          // Resolve to the single most-recent row per item across ALL stale
-          // days first, then decide from THAT row alone — each day keeps its
-          // own row for the same item (never updates a shared one), so an
-          // old stranded unchecked row from before the item was carried
-          // forward would otherwise always win here and resurrect an item
-          // forever even after it was bought on a later day.
-          const latestByItem = new Map<string, DayItemRecord>();
-          for (const item of staleItems) {
-            const existing = latestByItem.get(item.itemId);
-            if (!existing || item.updatedAt > existing.updatedAt) {
-              latestByItem.set(item.itemId, item);
-            }
-          }
-          const notBought = new Map<string, DayItemRecord>();
-          for (const [itemId, item] of latestByItem) {
-            if (!item.checked) notBought.set(itemId, item);
-          }
+          const toCarry = selectCarryOverItems(staleItems);
 
-          if (notBought.size > 0) {
+          if (toCarry.length > 0) {
             const now = Date.now();
             const alreadyToday = new Set(localItems.map(item => item.itemId));
-            const carriedOver = Array.from(notBought.values())
+            const carriedOver = toCarry
               .filter(item => !alreadyToday.has(item.itemId))
               .map(item => ({
                 dayKey: todayKey,
@@ -422,26 +408,18 @@ export function useDayState(user: User | null) {
 
             if (remoteStaleItems && remoteStaleItems.length > 0) {
               const alreadyToday = new Set(userMerged.map(item => item.itemId));
-              // Same latest-row-per-item resolution as the local carry-over
-              // above — remoteStaleItems now includes checked rows too (see
-              // loadStaleUnfinishedItemsFromSupabase), so this must pick the
-              // most recent row per item before checking its checked state.
-              const latestByItem = new Map<string, DayItemRecord>();
-              for (const item of remoteStaleItems) {
-                if (alreadyToday.has(item.itemId)) continue;
-                const existing = latestByItem.get(item.itemId);
-                if (!existing || item.updatedAt > existing.updatedAt) {
-                  latestByItem.set(item.itemId, item);
-                }
-              }
-              const notBought = new Map<string, DayItemRecord>();
-              for (const [itemId, item] of latestByItem) {
-                if (!item.checked) notBought.set(itemId, item);
-              }
+              // Mesma regra do carry-over local, mas pesando as linhas do
+              // Supabase JUNTO com as locais dos mesmos dias: se uma compra
+              // marcada aqui ainda não subiu (sync na fila ou travado), o
+              // Supabase continua dizendo "não comprado" para aquele dia e,
+              // sozinho, ressuscitaria o item como pendente. Misturando as
+              // duas fontes, a linha mais recente de cada item vence.
+              const toCarry = selectCarryOverItems([...staleItems, ...remoteStaleItems])
+                .filter(item => !alreadyToday.has(item.itemId));
 
-              if (notBought.size > 0) {
+              if (toCarry.length > 0) {
                 const now = Date.now();
-                const recovered: DayItemRecord[] = Array.from(notBought.values()).map(item => ({
+                const recovered: DayItemRecord[] = toCarry.map(item => ({
                   dayKey: todayKey,
                   itemId: item.itemId,
                   checked: false,
