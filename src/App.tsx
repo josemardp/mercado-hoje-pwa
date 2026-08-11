@@ -35,9 +35,35 @@ const TABS: { key: TabKey; label: string; emoji: string }[] = [
   { key: 'rotina', label: 'Rotina', emoji: '🌅' },
 ];
 
-// S3-08: ItemRow agora mostra quantidade diária e botões de incremento.
-// O clique principal continua marcando como concluído (sem quebrar UX).
-// Botões "-" e "+" ficam ao lado do botão de adiar.
+// Ícones de ação em SVG traçado (não emoji): emoji é o vocabulário do
+// CONTEÚDO aqui (produto, categoria, aba) — usar emoji também nos controles
+// misturava as duas linguagens e deixava a linha com cara de rascunho. O
+// traço herda currentColor, então cada botão se pinta pelo próprio estado.
+const IconClock = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <circle cx="12" cy="12" r="8.25" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M12 7.6V12l2.9 1.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconPencil = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <path d="M5 19l.9-3.6L15.6 5.7a1.9 1.9 0 0 1 2.7 0a1.9 1.9 0 0 1 0 2.7L8.6 18.1L5 19Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="M14.6 6.9l2.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconReturn = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <path d="M9.5 7.5H15a4.5 4.5 0 0 1 0 9H8.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M11.8 4.7L8.6 7.5l3.2 2.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+// A linha de item é uma grade de duas faixas no celular: nome em cima
+// ocupando a largura toda (nunca cortado — era o "vinag..." reportado) e os
+// controles embaixo. Num container largo (tablet/desktop) volta a ser uma
+// linha só. O clique principal continua marcando como concluído.
 const ItemRow = memo(function ItemRow({
   item,
   cat,
@@ -61,7 +87,12 @@ const ItemRow = memo(function ItemRow({
   onEditQty?: () => void;
   onEdit?: () => void;
 }) {
-  const effectiveQty = (dayQty && dayQty > 1) ? dayQty : (item.qty || 1) ;
+  const effectiveQty = (dayQty && dayQty > 1) ? dayQty : (item.qty || 1);
+  // O stepper já mostra a quantidade, então o selo "2x" ao lado do nome só
+  // aparece onde não há stepper (aba Concluídos) — sem número duplicado.
+  const hasStepper = !!onIncrementQty && !checked;
+  const hasPostpone = !!(showPostpone && !checked && onPostpone);
+  const hasEdit = !!onEdit && !checked;
   return (
     <div
       className={`item${checked ? ' checked' : ''}`}
@@ -79,55 +110,42 @@ const ItemRow = memo(function ItemRow({
       tabIndex={0}
     >
       <span className="checkbox" dangerouslySetInnerHTML={{ __html: CHECK_SVG }} />
-      <span className="emoji-tag">{item.emoji}</span>
-      <span className="name">{item.name}</span>
-      {/* S3-08: quantity badge — clickable to open editor */}
-      {effectiveQty > 1 && (
-        <span
-          className="qty qty-editable"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditQty?.();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
+      <span className="item-label">
+        <span className="emoji-tag">{item.emoji}</span>
+        <span className="name">{item.name}</span>
+        {!hasStepper && effectiveQty > 1 && (
+          <span
+            className="qty qty-editable"
+            onClick={(e) => {
               e.stopPropagation();
               onEditQty?.();
-            }
-          }}
-          role="button"
-          aria-label={`Editar quantidade de ${item.name}`}
-          tabIndex={0}
-        >
-          {effectiveQty}x
-        </span>
-      )}
-      {/* S3-08: action buttons cluster */}
-      {(showPostpone && !checked) || onIncrementQty ? (
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                onEditQty?.();
+              }
+            }}
+            role="button"
+            aria-label={`Editar quantidade de ${item.name}`}
+            tabIndex={0}
+          >
+            {effectiveQty}x
+          </span>
+        )}
+      </span>
+      {(hasStepper || hasPostpone || hasEdit) && (
         <div className="item-actions" onClick={(e) => e.stopPropagation()}>
-          {onIncrementQty && !checked && (
-            <>
-              {/* S3-09 fix: edit button — opens full editor (qty + category) */}
-              {onEdit && (
-                <button
-                  className="qty-btn edit-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                  }}
-                  aria-label={`Editar ${item.name}`}
-                  tabIndex={-1}
-                  title="Editar"
-                >
-                  ✏️
-                </button>
-              )}
+          {hasStepper && (
+            // Um controle só no lugar de três botões soltos: "−", a
+            // quantidade (que abre o editor) e "+" dentro da mesma pílula.
+            <div className="stepper">
               <button
-                className="qty-btn qty-minus-btn"
+                className="stepper-btn"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onIncrementQty(-1);
+                  onIncrementQty!(-1);
                 }}
                 aria-label={`Diminuir quantidade de ${item.name}`}
                 tabIndex={-1}
@@ -135,42 +153,59 @@ const ItemRow = memo(function ItemRow({
                 −
               </button>
               <button
-                className="qty-btn qty-plus-btn"
+                className="stepper-qty"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onIncrementQty(1);
+                  onEditQty?.();
+                }}
+                aria-label={`Editar quantidade de ${item.name}`}
+                tabIndex={-1}
+                title="Editar quantidade"
+              >
+                {effectiveQty}
+              </button>
+              <button
+                className="stepper-btn stepper-plus"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onIncrementQty!(1);
                 }}
                 aria-label={`Aumentar quantidade de ${item.name}`}
                 tabIndex={-1}
               >
                 +
               </button>
-            </>
+            </div>
           )}
-          {showPostpone && !checked && onPostpone && (
-            <span
-              className="postpone-btn"
+          {hasPostpone && (
+            <button
+              className="row-btn postpone-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                onPostpone(item);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onPostpone(item);
-                }
+                onPostpone!(item);
               }}
               title="Adiar para amanhã"
-              role="button"
               aria-label={`Adiar ${item.name} para amanhã`}
-              tabIndex={0}
             >
-              🕒
-            </span>
+              <IconClock />
+            </button>
+          )}
+          {hasEdit && (
+            <button
+              className="row-btn edit-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit!();
+              }}
+              title="Editar item"
+              aria-label={`Editar ${item.name}`}
+              tabIndex={-1}
+            >
+              <IconPencil />
+            </button>
           )}
         </div>
-      ) : null}
+      )}
     </div>
   );
 });
@@ -1225,11 +1260,13 @@ function AppInner() {
                       aria-label={`Trazer ${item.name} de volta para hoje`}
                       tabIndex={0}
                     >
-                      <span className="emoji-tag">{item.emoji}</span>
-                      <span className="name">{item.name}</span>
-                      {item.qty && item.qty > 1 && <span className="qty">{item.qty}x</span>}
+                      <span className="item-label">
+                        <span className="emoji-tag">{item.emoji}</span>
+                        <span className="name">{item.name}</span>
+                        {item.qty && item.qty > 1 && <span className="qty">{item.qty}x</span>}
+                      </span>
                       <span className="return-btn" title="Trazer de volta para hoje">
-                        ↩
+                        <IconReturn />
                       </span>
                     </div>
                   );

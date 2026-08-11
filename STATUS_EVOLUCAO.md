@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 11/08/2026 (correção do carry-over de Compras — ver última linha da seção 14; o plano dos 4 achados residuais da seção 13 continua sendo o foco da próxima sessão)
+**Última atualização:** 11/08/2026 (carry-over de Compras corrigido + redesenho da linha de item no celular — ver as duas últimas linhas da seção 14; o plano dos 4 achados residuais da seção 13 continua sendo o foco da próxima sessão)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -542,6 +542,8 @@ Cada item fecha com: `npx tsc -b && pnpm lint && pnpm test && pnpm build`, teste
 | 30/07/2026 | Planejamento (pós-sprints) | Josemar pediu plano completo pra fechar os 4 achados residuais. Pesquisa a fundo (arquitetura de sync/timestamps, RPCs condicionais, estrutura dos 3 arquivos grandes) + plano desenhado e aprovado por ele. Decisão tomada: implementar Realtime de verdade pro AUD-006 (custo confirmado irrelevante pro uso dele) | Nenhum código alterado ainda — só pesquisa e planejamento. Plano completo copiado pra seção 13 (arquivo de plano local do Claude Code não sincroniza entre máquinas) | STATUS_EVOLUCAO.md desta atualização, seção 13 |
 
 | 11/08/2026 | Correção (pós-sprints) | Bug relatado pelo proprietário: item marcado como comprado voltava como pendente na virada do dia. Regra confirmada por ele: volta tudo que não foi comprado (pendente ou adiado), só o comprado fica pra trás. Regra centralizada em `selectCarryOverItems` (usada pelo caminho local e pelo de recuperação via Supabase); recuperação remota passou a pesar as linhas locais junto com as do servidor, senão uma compra ainda não sincronizada era desfeita pelo que o servidor dizia; consulta de dias anteriores no Supabase agora vem ordenada da mais nova pra mais antiga, pra que o teto de linhas do PostgREST corte histórico velho e não o recente | 75 testes aprovados (novos: regra do carry-over e empate local vs remoto), typecheck e lint limpos | `src/lib/db.ts`, `src/lib/useStore.ts`, `src/lib/__tests__/dexie.test.ts`, `README.md` |
+
+| 11/08/2026 | Ajuste visual (pós-sprints) | Nome do produto aparecia cortado no celular ("vinag...", "molh...") porque nome e os 4 botões disputavam a mesma linha. A linha de item virou uma grade de duas faixas (nome na largura toda em cima, controles embaixo, checkbox atravessando as duas). Junto: "−/+" viraram um stepper único com a quantidade no meio (que abre o editor), saiu o botão verde cheio de cada linha, adiar/editar/voltar viraram ícones SVG traçados no lugar de emoji, cada linha ganhou superfície e contorno próprios e o emoji do produto virou pastilha com o tom da categoria; alvos de toque de 44px mantidos | Conferido com o CSS real renderizado a 360px e 320px, tema claro e escuro: sem corte de nome, sem estouro horizontal, nome longo sem espaço quebra certo. Typecheck, lint, 75 testes e build de produção aprovados | `src/App.tsx`, `src/index.css` |
 
 ### Modelo de atualização
 

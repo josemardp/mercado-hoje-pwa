@@ -419,28 +419,49 @@ main {
   border-radius: 20px;
 }
 
+/* Duas faixas: o nome ocupa a largura toda em cima, os controles ficam
+   embaixo. Nome e controles deixam de disputar a mesma linha, que era o
+   motivo de "Vinagre de maçã" virar "vinag...". O checkbox atravessa as
+   duas faixas, então continua sendo o alvo grande da linha inteira. */
 .item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "check label"
+    "check actions";
   align-items: center;
-  gap: 12px;
-  padding: 12px 12px;
-  border-radius: 14px;
-  margin-bottom: 6px;
+  column-gap: 12px;
+  row-gap: 0;
+  padding: 11px 12px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+  /* Tinta do próprio --ink: a linha se destaca do painel nos dois temas
+     (no claro escurece um fio, no escuro clareia), sem cor fixa. */
+  background: var(--overlay-04);
+  border: 1px solid var(--overlay-06);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
-  transition: background .25s var(--ease-out), transform .12s var(--ease-out), opacity .22s var(--ease-out);
+  transition: background .25s var(--ease-out), border-color .25s var(--ease-out), transform .12s var(--ease-out), opacity .22s var(--ease-out);
 }
 .item:active { transform: scale(.985); }
 .item:focus-visible,
 .autocomplete-item:focus-visible,
 .ios-install-hint:focus-visible,
-.postpone-btn:focus-visible,
+.row-btn:focus-visible,
+.stepper-btn:focus-visible,
+.stepper-qty:focus-visible,
 .postponed-item:focus-visible {
   outline: 2.5px solid var(--blue);
   outline-offset: 2px;
 }
+
 .checkbox {
+  grid-area: check;
+  /* Ancorado na faixa do nome, não no meio das duas faixas: solto no
+     meio, o círculo perdia a relação com o item que ele marca. */
+  align-self: start;
+  margin-top: 2px;
   flex: 0 0 26px;
   width: 26px;
   height: 26px;
@@ -462,15 +483,33 @@ main {
   transform: scale(1.06);
 }
 .item.checked .checkbox svg { opacity: 1; transform: scale(1); }
-.item .emoji-tag { font-size: 1.1875rem; flex: 0 0 auto; }
+/* Nome + emoji andam juntos; o emoji vira uma pastilha com o tom da
+   categoria, que dá o ponto de cor da linha sem precisar pintar o resto. */
+.item-label {
+  grid-area: label;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.item .emoji-tag {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 10px;
+  background: var(--cat-bg, var(--overlay-06));
+}
 .item .name {
   font-size: 0.96875rem;
   font-weight: 700;
-  flex: 1;
+  line-height: 1.28;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1;
+  overflow-wrap: anywhere;
   transition: opacity .2s var(--ease-out);
 }
 .item.checked .name {
@@ -478,74 +517,104 @@ main {
   text-decoration-thickness: 2px;
   opacity: .42;
 }
-.item.checked { background: var(--cat-bg, transparent); }
+.item.checked {
+  background: color-mix(in srgb, var(--cat-bg, transparent) 62%, var(--paper));
+  border-color: color-mix(in srgb, var(--cat-color, transparent) 20%, transparent);
+}
+.item.checked .emoji-tag { background: var(--paper); }
 .item .qty {
   flex: 0 0 auto;
   font-size: 0.71875rem;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
   color: var(--cat-color, var(--ink-soft));
   background: var(--cat-bg, var(--overlay-06));
   padding: 3px 8px;
   border-radius: 20px;
 }
-.item.checked .qty { opacity: .5; }
+.item.checked .qty { opacity: .5; background: var(--paper); }
 
-.postpone-btn {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 50%;
-  background: var(--overlay-055);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.90625rem;
-  cursor: pointer;
-  transition: background .15s var(--ease-out), transform .15s var(--ease-out);
-}
-.postpone-btn:active { transform: scale(.9); background: var(--overlay-11); }
-
-/* S3-08: item actions cluster — groups qty buttons + postpone button */
+/* Faixa de controles: quantidade à esquerda, ações à direita. */
 .item-actions {
-  flex: 0 0 auto;
+  grid-area: actions;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  margin-top: 8px;
 }
-.qty-btn {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 50%;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.125rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background .15s var(--ease-out), transform .15s var(--ease-out);
-}
-.qty-minus-btn {
-  background: var(--overlay-055);
-  color: var(--ink);
-}
-.qty-minus-btn:active { transform: scale(.9); background: var(--overlay-11); }
-.qty-plus-btn {
-  background: var(--green);
-  color: var(--on-accent);
-}
-.qty-plus-btn:active { transform: scale(.9); }
+.item-actions .row-btn:first-of-type { margin-left: auto; }
 
-/* S3-08: clickable qty badge in item row */
-.qty-editable {
-  cursor: pointer;
-  transition: transform .15s var(--ease-out);
+/* Um controle só para a quantidade, em vez de dois botões soltos. */
+.stepper {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 2px;
+  border-radius: 999px;
+  border: 1px solid var(--overlay-06);
+  background: var(--overlay-04);
 }
+.stepper-btn,
+.stepper-qty,
+.row-btn {
+  position: relative;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s var(--ease-out), transform .15s var(--ease-out), color .15s var(--ease-out);
+}
+/* Alvo de toque de 44px em botões de 36px, sem inchar o desenho. */
+.stepper-btn::before,
+.stepper-qty::before,
+.row-btn::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.stepper-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.stepper-btn:active { background: var(--overlay-11); transform: scale(.9); }
+.stepper-plus { color: var(--cat-color, var(--ink)); }
+.stepper-qty {
+  min-width: 24px;
+  height: 34px;
+  padding: 0 2px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  border-radius: 10px;
+}
+.stepper-qty:active { background: var(--overlay-11); transform: scale(.92); }
+
+.row-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--overlay-06);
+  background: var(--overlay-04);
+  color: var(--ink-soft);
+}
+.row-btn svg { width: 18px; height: 18px; }
+.row-btn:active { background: var(--overlay-11); transform: scale(.9); }
+.postpone-btn { color: var(--blue); }
+
+.qty-editable { cursor: pointer; }
 .qty-editable:active { transform: scale(.92); }
 
 /* S3-08: edit quantity modal styles */
@@ -662,25 +731,31 @@ main {
 
 .category.postponed { padding-top: 14px; border-top: 1.5px dashed var(--overlay-14); }
 .category.postponed .category-head h2 { color: var(--blue); }
+/* A linha de adiados não tem checkbox nem controles: uma faixa só,
+   com o nome livre pra quebrar e o botão de retorno fixo à direita. */
 .postponed-item {
-  background: var(--blue-bg);
-  border-radius: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label return";
+  background: color-mix(in srgb, var(--blue-bg) 60%, var(--paper));
+  border-color: color-mix(in srgb, var(--blue) 18%, transparent);
 }
 .return-btn {
+  grid-area: return;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  position: relative;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--blue-bg);
+  border: 1px solid color-mix(in srgb, var(--blue) 20%, transparent);
+  background: var(--paper);
   color: var(--blue);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  font-weight: 700;
+  display: grid;
+  place-items: center;
   cursor: pointer;
   transition: transform .15s var(--ease-out), background .15s var(--ease-out);
 }
+.return-btn::before { content: ''; position: absolute; inset: -4px; }
+.return-btn svg { width: 19px; height: 19px; }
 .return-btn:active { transform: scale(.9); background: var(--blue); color: var(--on-accent); }
 
 footer {
