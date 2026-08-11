@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './lib/AuthProvider';
 import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/categories';
 import { db, type ItemRecord } from './lib/db';
 import { useInstallPrompt } from './lib/useInstallPrompt';
-import { classifyItem } from './lib/classifyCategory';
+import { classifyItem, fallbackEmojiForCategory } from './lib/classifyCategory';
 import { useRotinaState } from './lib/useRotinaState';
 import { useRotinaStepDefs } from './lib/useRotinaStepDefs';
 import { useAgendaState } from './lib/useAgendaState';
@@ -579,14 +579,7 @@ function AppInner() {
 
     try {
       const classification = await classifyItem(name);
-      const emojis: Record<string, string> = {
-        frutas: '🍎',
-        bebidas: '🥤',
-        mercearia: '🛒',
-        casa: '🧻',
-        outros: '📦',
-      };
-      const emoji = classification.emoji || emojis[classification.category] || '📦';
+      const emoji = classification.emoji || fallbackEmojiForCategory(classification.category);
       const cat = getCategoryByKey(classification.category);
       const catName = cat ? cat.name : 'Outros';
 

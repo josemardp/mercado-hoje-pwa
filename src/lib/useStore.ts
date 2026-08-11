@@ -10,6 +10,7 @@ import {
 } from './db';
 
 import { getTodayKey } from './categories';
+import { upgradeItemClassification } from './classifyCategory';
 import { logError, logQueueHealth } from './logger';
 
 export interface DayStateData {
@@ -886,6 +887,34 @@ export function useDayState(user: User | null) {
 // S2-08: takes `user` as a parameter (AuthProvider) instead of running its
 // own getSession()/onAuthStateChange subscription in parallel with
 // useDayState's identical one — see useDayState for the same change.
+/**
+ * Passa o catálogo já carregado pelo classificador atual e grava as
+ * correções que valem a pena (emoji genérico → emoji do produto, item
+ * parado em "Outros" → categoria certa). Ver upgradeItemClassification
+ * para as travas que protegem o que o usuário escolheu à mão.
+ *
+ * Deliberadamente LOCAL, sem fila de sync: o classificador é offline e
+ * determinístico, então cada aparelho chega ao mesmo resultado lendo o
+ * mesmo nome, e o Supabase recebe o emoji novo no próximo toque do item
+ * (marcar, adiar, editar) como parte da escrita normal. Enfileirar aqui
+ * significaria reescrever o catálogo inteiro no servidor a cada abertura,
+ * com risco de sobrepor o que outro aparelho mudou no meio tempo.
+ */
+async function applyClassificationUpgrades(list: ItemRecord[]): Promise<ItemRecord[]> {
+  const changed: ItemRecord[] = [];
+  const next = list.map(item => {
+    const upgrade = upgradeItemClassification(item);
+    if (!upgrade) return item;
+    const updated = { ...item, ...upgrade };
+    changed.push(updated);
+    return updated;
+  });
+
+  if (changed.length === 0) return list;
+  await db.items.bulkPut(changed);
+  return next;
+}
+
 export function useItems(user: User | null) {
   const [items, setItems] = useState<ItemRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -932,7 +961,7 @@ export function useItems(user: User | null) {
       const allItems = await db.items.where('userId').equals(user.id).toArray();
       if (isStale()) return;
       allItems.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
-      setItems(allItems);
+      setItems(await applyClassificationUpgrades(allItems));
     } catch (err) {
       if (!isStale()) {
         const msg = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -989,7 +1018,7 @@ export function useItems(user: User | null) {
           merged.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
           await db.items.bulkPut(merged);
           if (isStale()) return;
-          setItems(merged);
+          setItems(await applyClassificationUpgrades(merged));
         }
       } catch {
         // Ignored: keep local
