@@ -5,7 +5,7 @@
 **Auditoria de origem:** `AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
-**Última atualização:** 30/07/2026 (sessão de planejamento dos 4 achados residuais — nenhum código ainda alterado, só o plano)
+**Última atualização:** 11/08/2026 (correção da regra de carry-over de Compras — ver última linha da seção 14; o plano dos 4 achados residuais da seção 13 continua sendo o foco da próxima sessão)
 **Branch de entrega:** `main`
 **Baseline do acompanhamento:** `7610411`
 **Responsável:** sessão de IA em execução direta (Claude Code), a pedido do proprietário do projeto
@@ -540,6 +540,8 @@ Cada item fecha com: `npx tsc -b && pnpm lint && pnpm test && pnpm build`, teste
 | 30/07/2026 | Sprint 6 | `README.md` reescrito por completo: nome atual, 3 módulos, autenticação por senha (estava desatualizado, ainda descrevia Magic Link), 6 tabelas + 9 RPCs, sync/conflitos, exportação, segurança e runbook de rollback | AUD-024 parcialmente resolvido (metade "documentação"; metade "estrutura" cancelada, ver linha seguinte) | `README.md` |
 | 30/07/2026 | Sprint 6 | Sprint encerrada com escopo reduzido (D-023): S6-10 (dividir `App.tsx`/`useStore.ts`/`db.ts` por domínio) cancelado por decisão (D-022) — maior risco de regressão da sprint, nenhum critério de aceite dependia disso | Gate G6 aprovado; Sprint 6 concluída (9/10); as 7 sprints do plano estão encerradas; achados residuais parciais (AUD-005/006/011/024) registrados na seção 13 pra decisão do proprietário | STATUS_EVOLUCAO.md desta atualização |
 | 30/07/2026 | Planejamento (pós-sprints) | Josemar pediu plano completo pra fechar os 4 achados residuais. Pesquisa a fundo (arquitetura de sync/timestamps, RPCs condicionais, estrutura dos 3 arquivos grandes) + plano desenhado e aprovado por ele. Decisão tomada: implementar Realtime de verdade pro AUD-006 (custo confirmado irrelevante pro uso dele) | Nenhum código alterado ainda — só pesquisa e planejamento. Plano completo copiado pra seção 13 (arquivo de plano local do Claude Code não sincroniza entre máquinas) | STATUS_EVOLUCAO.md desta atualização, seção 13 |
+
+| 11/08/2026 | Correção (pós-sprints) | Regra do carry-over de Compras redefinida pelo proprietário: só item **adiado** volta pro dia seguinte. Item comprado fica nos concluídos do dia da compra (era o bug relatado: voltava como pendente) e pendente-sem-adiar não é mais arrastado. Regra centralizada em `selectCarryOverItems` (usada pelo caminho local e pelo de recuperação via Supabase); recuperação remota passou a pesar as linhas locais junto com as do servidor, senão uma compra ainda não sincronizada era desfeita pelo que o servidor dizia; consulta de dias anteriores no Supabase agora vem ordenada da mais nova pra mais antiga, pra que o teto de linhas do PostgREST corte histórico velho e não o recente | 75 testes aprovados (2 novos: regra do carry-over e empate local vs remoto), typecheck e lint limpos | `src/lib/db.ts`, `src/lib/useStore.ts`, `src/lib/__tests__/dexie.test.ts`, `README.md` |
 
 ### Modelo de atualização
 

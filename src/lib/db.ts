@@ -502,8 +502,12 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
  * one, so filtering to checked=false here would return an old stranded
  * unchecked row for an item that was already bought on a later day just as
  * readily as a genuinely-still-pending one. The caller must resolve to the
- * single most-recent row per item first, then check THAT row's checked
- * state (see useDayState's load()).
+ * single most-recent row per item first (selectCarryOverItems does that).
+ *
+ * Ordered newest-first on purpose: PostgREST caps how many rows it returns,
+ * and once this table has more history than that cap, the rows that get cut
+ * must be the OLDEST ones — cutting the newest would hand the caller only
+ * ancient "não comprado" rows and resurrect items that were bought since.
  */
 export async function loadStaleUnfinishedItemsFromSupabase(userId: string, beforeDayKey: string): Promise<DayItemRecord[] | null> {
   try {
@@ -511,7 +515,8 @@ export async function loadStaleUnfinishedItemsFromSupabase(userId: string, befor
       .from('mh_day_items')
       .select('*')
       .lt('day_key', beforeDayKey)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
 
     if (error || !data) return null;
 
@@ -519,6 +524,37 @@ export async function loadStaleUnfinishedItemsFromSupabase(userId: string, befor
   } catch {
     return null;
   }
+}
+
+/**
+ * Decide which items from earlier days roll into today's list.
+ *
+ * REGRA (definida pelo usuário): só volta o que ele marcou explicitamente
+ * como "adiado". Item comprado fica nos concluídos daquele dia e não
+ * reaparece; item que ficou só pendente, sem ser adiado, também não volta —
+ * adiar é a ação que diz "quero esse de novo amanhã".
+ *
+ * Resolve primeiro a linha MAIS RECENTE de cada item e decide a partir
+ * dela sozinha: cada dia grava a sua própria linha por item (nunca atualiza
+ * uma linha compartilhada), então uma linha velha "adiado / não comprado"
+ * de antes da compra continua existindo no banco e venceria pra sempre se
+ * a decisão fosse tomada linha a linha.
+ *
+ * Aceita linhas locais e remotas misturadas de propósito: a mais recente de
+ * cada item vence, então uma linha do Supabase que ficou desatualizada
+ * (sync que falhou depois da compra) não consegue ressuscitar um item que
+ * este aparelho sabe que já foi comprado.
+ */
+export function selectCarryOverItems(staleItems: DayItemRecord[]): DayItemRecord[] {
+  const latestByItem = new Map<string, DayItemRecord>();
+  for (const item of staleItems) {
+    const existing = latestByItem.get(item.itemId);
+    if (!existing || item.updatedAt > existing.updatedAt) {
+      latestByItem.set(item.itemId, item);
+    }
+  }
+
+  return Array.from(latestByItem.values()).filter(item => item.postponed && !item.checked);
 }
 
 /**
