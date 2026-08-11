@@ -151,32 +151,29 @@ describe('Dexie schema (fake-indexeddb)', () => {
     await db.resetCutoffs.delete(['user-1', '2026-07-30', 'rotina']);
   });
 
-  // ─── Regra do carry-over de Compras: só volta pro dia seguinte o que foi
-  // explicitamente ADIADO. Item comprado fica nos concluídos do dia da
-  // compra e não pode reaparecer como pendente (bug relatado), e item que
-  // ficou só pendente, sem adiar, também não é arrastado. A query varre
-  // todo dayKey < hoje (não só o mais recente), pra cobrir vários dias sem
-  // abrir o app, e selectCarryOverItems resolve a linha mais recente de
-  // cada item antes de decidir.
-  it('só itens adiados voltam no dia seguinte; comprados e pendentes-sem-adiar não', async () => {
+  // ─── Regra do carry-over de Compras: volta pro dia seguinte tudo que não
+  // foi comprado, pendente ou adiado; só o comprado fica pra trás e nunca
+  // pode reaparecer como pendente (bug relatado). A query varre todo dayKey
+  // < hoje (não só o mais recente), pra cobrir vários dias sem abrir o app,
+  // e selectCarryOverItems resolve a linha mais recente de cada item antes
+  // de decidir.
+  it('pendentes e adiados de qualquer dia anterior voltam; comprados não', async () => {
     const userId = 'user-carryover';
     const today = '2026-08-01';
     await db.dayItems.bulkAdd([
-      // pendente, nunca adiado — não volta
+      // pendente, nunca adiado — volta
       { dayKey: '2026-07-30', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 100, userId },
       // comprado — não volta
       { dayKey: '2026-07-30', itemId: 'feijao', checked: true, postponed: false, inToday: true, updatedAt: 100, userId },
       // adiado — volta
       { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId },
-      // adiado em 07-29 e comprado em 07-31, cada dia na sua própria linha
-      // (nada atualiza a antiga): a linha velha "adiado / não comprado"
-      // ainda existe no banco e não pode ressuscitar o item.
-      { dayKey: '2026-07-29', itemId: 'acucar', checked: false, postponed: true, inToday: false, updatedAt: 50, userId },
+      // pendente em dois dias diferentes — volta uma vez só, pela linha mais recente
+      { dayKey: '2026-07-31', itemId: 'arroz', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
+      // pendente em 07-29 e comprado em 07-31, cada dia na sua própria linha
+      // (nada atualiza a antiga): a linha velha "não comprado" ainda existe
+      // no banco e não pode ressuscitar o item.
+      { dayKey: '2026-07-29', itemId: 'acucar', checked: false, postponed: false, inToday: true, updatedAt: 50, userId },
       { dayKey: '2026-07-31', itemId: 'acucar', checked: true, postponed: false, inToday: true, updatedAt: 400, userId },
-      // adiado em 07-29, voltou como pendente em 07-31 e ficou sem comprar:
-      // a linha mais recente não está adiada, então não volta de novo.
-      { dayKey: '2026-07-29', itemId: 'cafe', checked: false, postponed: true, inToday: false, updatedAt: 60, userId },
-      { dayKey: '2026-07-31', itemId: 'cafe', checked: false, postponed: false, inToday: true, updatedAt: 300, userId },
     ]);
 
     const staleItems = await db.dayItems
@@ -187,19 +184,20 @@ describe('Dexie schema (fake-indexeddb)', () => {
 
     const toCarry = selectCarryOverItems(staleItems);
 
-    expect(toCarry.map(item => item.itemId)).toEqual(['leite']);
-    expect(toCarry[0].dayKey).toBe('2026-07-31');
+    expect(toCarry.map(item => item.itemId).sort()).toEqual(['arroz', 'leite']);
+    // 'arroz' aparece em dois dias anteriores: vence a linha de 07-31.
+    expect(toCarry.find(item => item.itemId === 'arroz')?.dayKey).toBe('2026-07-31');
 
     await db.dayItems.where('userId').equals(userId).delete();
   });
 
   // Linha remota desatualizada não ressuscita item já comprado: a compra
   // foi marcada neste aparelho (linha local mais nova) mas o sync ainda não
-  // subiu, então o Supabase continua devolvendo a linha antiga "adiado".
+  // subiu, então o Supabase continua devolvendo a linha antiga "não comprado".
   it('carry-over com linhas local+remota misturadas: a mais recente do item vence', () => {
     const userId = 'user-carryover-lww';
-    const remota = { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: true, inToday: false, updatedAt: 200, userId };
-    const local = { dayKey: '2026-07-31', itemId: 'leite', checked: true, postponed: true, inToday: true, updatedAt: 500, userId };
+    const remota = { dayKey: '2026-07-31', itemId: 'leite', checked: false, postponed: false, inToday: true, updatedAt: 200, userId };
+    const local = { dayKey: '2026-07-31', itemId: 'leite', checked: true, postponed: false, inToday: true, updatedAt: 500, userId };
 
     expect(selectCarryOverItems([remota])).toHaveLength(1);
     expect(selectCarryOverItems([local, remota])).toEqual([]);

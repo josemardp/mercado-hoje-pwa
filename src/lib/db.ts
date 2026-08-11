@@ -529,16 +529,17 @@ export async function loadStaleUnfinishedItemsFromSupabase(userId: string, befor
 /**
  * Decide which items from earlier days roll into today's list.
  *
- * REGRA (definida pelo usuário): só volta o que ele marcou explicitamente
- * como "adiado". Item comprado fica nos concluídos daquele dia e não
- * reaparece; item que ficou só pendente, sem ser adiado, também não volta —
- * adiar é a ação que diz "quero esse de novo amanhã".
+ * REGRA (definida pelo usuário): volta tudo que não foi comprado — tanto o
+ * que ficou pendente quanto o que ele marcou como "adiado". Só o item
+ * comprado fica pra trás, nos concluídos do dia da compra, e nunca
+ * reaparece como pendente.
  *
  * Resolve primeiro a linha MAIS RECENTE de cada item e decide a partir
  * dela sozinha: cada dia grava a sua própria linha por item (nunca atualiza
- * uma linha compartilhada), então uma linha velha "adiado / não comprado"
- * de antes da compra continua existindo no banco e venceria pra sempre se
- * a decisão fosse tomada linha a linha.
+ * uma linha compartilhada), então uma linha velha "não comprado" de antes
+ * da compra continua existindo no banco e venceria pra sempre se a decisão
+ * fosse tomada linha a linha — era exatamente o caminho pelo qual um item
+ * já comprado voltava como pendente.
  *
  * Aceita linhas locais e remotas misturadas de propósito: a mais recente de
  * cada item vence, então uma linha do Supabase que ficou desatualizada
@@ -554,7 +555,7 @@ export function selectCarryOverItems(staleItems: DayItemRecord[]): DayItemRecord
     }
   }
 
-  return Array.from(latestByItem.values()).filter(item => item.postponed && !item.checked);
+  return Array.from(latestByItem.values()).filter(item => !item.checked);
 }
 
 /**
