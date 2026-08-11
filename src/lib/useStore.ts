@@ -301,11 +301,11 @@ export function useDayState(user: User | null) {
           .and(item => item.userId === userId)
           .toArray();
 
-        // Só os itens ADIADOS voltam pro dia seguinte (ver
-        // selectCarryOverItems): comprado fica nos concluídos do dia em que
-        // foi comprado, e pendente-sem-adiar não é arrastado. Varrer TODO
-        // dayKey anterior (não só o mais recente) cobre o caso de ficar
-        // vários dias sem abrir o app.
+        // Tudo que não foi comprado volta pro dia seguinte, pendente ou
+        // adiado (ver selectCarryOverItems); só o comprado fica pra trás,
+        // nos concluídos do dia da compra. Varrer TODO dayKey anterior (não
+        // só o mais recente) cobre o caso de ficar vários dias sem abrir o
+        // app.
         staleItems = await db.dayItems
           .where('dayKey')
           .below(todayKey)
