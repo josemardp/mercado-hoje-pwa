@@ -2,7 +2,7 @@
 
 > Documento operacional vivo. Deve ser lido no início e atualizado no fim de toda sessão de evolução do projeto.
 
-**Auditoria de origem:** `AUDITORIA_COMPLETA.md`
+**Auditoria de origem:** `docs/historico/AUDITORIA_COMPLETA.md`
 **Plano mestre:** `PLANO_EVOLUCAO_IMPLEMENTACAO.md`
 **Início do acompanhamento:** 30/07/2026
 **Última atualização:** 11/08/2026 (carry-over de Compras corrigido, linha de item redesenhada no celular e classificador de categoria/emoji reescrito — ver as três últimas linhas da seção 14; o plano dos 4 achados residuais da seção 13 continua sendo o foco da próxima sessão)
@@ -49,7 +49,7 @@ Em caso de dúvida ou divergência:
 1. requisitos novos e explícitos do proprietário do projeto;
 2. decisões aprovadas e registradas neste status;
 3. `PLANO_EVOLUCAO_IMPLEMENTACAO.md`;
-4. `AUDITORIA_COMPLETA.md`;
+4. `docs/historico/AUDITORIA_COMPLETA.md`;
 5. comportamento legado do código.
 
 Uma mudança de escopo deve ser registrada na seção “Decisões” antes de alterar a ordem ou o objetivo de uma sprint.
