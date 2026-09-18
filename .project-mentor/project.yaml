@@ -15,14 +15,14 @@ status:
   health: unknown
   phase: null
   priority: null
-  updated_at: 2026-09-18T10:20:11-03:00
-  last_session_at: null
+  updated_at: 2026-09-18T10:25:29-03:00
+  last_session_at: 2026-09-18T10:25:29-03:00
   confidence: inferred
 focus:
   objective: null
-  current: null
-  last_completed: null
-  recommended_next_action: null
+  current: Testar marcação e desmarcação em uso real simultâneo no PC e no celular para validação final das ações pelo usuário.
+  last_completed: Conectar PWA install prompt e banner de atualização de Service Worker
+  recommended_next_action: act-005
 next_actions:
   - id: act-001
     title: Corrigir motor de sincronização e corrida de carry-over (desmarque de itens)
@@ -72,8 +72,24 @@ next_actions:
     created_at: 2026-09-18T09:42:33-03:00
     done_at: 2026-09-18T09:55:09-03:00
     note: null
+  - id: act-005
+    title: Testar marcação e desmarcação em uso real simultâneo no PC e no celular para validação final das ações pelo usuário.
+    status: pending
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-09-18T10:25:29-03:00
+    done_at: null
+    note: null
 blockers: []
-decisions_recent: []
+decisions_recent:
+  - date: 2026-09-18
+    text: "Adotar tolerância de 2 segundos no LWW local favorecendo `checked: true` em caso de empate para absorver skew de relógio entre dispositivos."
+  - date: 2026-09-18
+    text: Aplicação de migração SQL diretamente no Supabase Dashboard com permissões estritas (`REVOKE FROM PUBLIC, anon`).
 milestones: []
 review:
   stale_after_days: null
