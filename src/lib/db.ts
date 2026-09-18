@@ -509,12 +509,24 @@ export async function loadDayStateFromSupabase(dayKey: string, userId: string): 
  * must be the OLDEST ones — cutting the newest would hand the caller only
  * ancient "não comprado" rows and resurrect items that were bought since.
  */
+function getFloorDayKey(dayKey: string, daysAgo = 7): string {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - daysAgo);
+  const fy = date.getFullYear();
+  const fm = String(date.getMonth() + 1).padStart(2, '0');
+  const fd = String(date.getDate()).padStart(2, '0');
+  return `${fy}-${fm}-${fd}`;
+}
+
 export async function loadStaleUnfinishedItemsFromSupabase(userId: string, beforeDayKey: string): Promise<DayItemRecord[] | null> {
   try {
+    const floorKey = getFloorDayKey(beforeDayKey, 7);
     const { data, error } = await supabase
       .from('mh_day_items')
       .select('*')
       .lt('day_key', beforeDayKey)
+      .gte('day_key', floorKey)
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
 
@@ -586,7 +598,14 @@ export function mergeDayItemsWithLWW(
     } else {
       const remoteTs = remoteItem.updatedAt || 0;
       const localTs = localItem.updatedAt || 0;
-      if (remoteTs > localTs) {
+      const diff = remoteTs - localTs;
+      // Clock skew tolerance: if within 2 seconds and one of them is marked checked,
+      // prefer the checked state to prevent an ad-hoc minor clock skew from unchecking an item.
+      if (Math.abs(diff) <= 2000 && remoteItem.checked !== localItem.checked) {
+        if (remoteItem.checked) {
+          merged.set(remoteItem.itemId, remoteItem);
+        }
+      } else if (remoteTs > localTs) {
         merged.set(remoteItem.itemId, remoteItem);
       }
     }
@@ -672,6 +691,12 @@ export async function syncDayItemToSupabase(item: DayItemRecord): Promise<boolea
           updatedAt: new Date(canonical.updated_at as string).getTime(),
           userId: canonical.user_id as string,
         });
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mh:day-item-reconciled', {
+            detail: { dayKey: canonical.day_key, itemId: canonical.item_id },
+          }));
+        }
       }
     }
 

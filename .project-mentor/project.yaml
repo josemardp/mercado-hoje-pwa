@@ -15,7 +15,7 @@ status:
   health: unknown
   phase: null
   priority: null
-  updated_at: 2026-09-16T06:58:04-03:00
+  updated_at: 2026-09-18T10:20:11-03:00
   last_session_at: null
   confidence: inferred
 focus:
@@ -23,7 +23,55 @@ focus:
   current: null
   last_completed: null
   recommended_next_action: null
-next_actions: []
+next_actions:
+  - id: act-001
+    title: Corrigir motor de sincronização e corrida de carry-over (desmarque de itens)
+    status: done_implemented
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-09-18T09:42:07-03:00
+    done_at: 2026-09-18T09:54:37-03:00
+    note: null
+  - id: act-002
+    title: Criar migração SQL com fix de cutoff, RLS em increment_use_count e janela de pendências
+    status: done_tested
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-09-18T09:42:16-03:00
+    done_at: 2026-09-18T10:20:11-03:00
+    note: null
+  - id: act-003
+    title: Implementar removeItemFromToday e corrigir bugs da lista e Agenda
+    status: done_implemented
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-09-18T09:42:25-03:00
+    done_at: 2026-09-18T09:54:58-03:00
+    note: null
+  - id: act-004
+    title: Conectar PWA install prompt e banner de atualização de Service Worker
+    status: done_implemented
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-09-18T09:42:33-03:00
+    done_at: 2026-09-18T09:55:09-03:00
+    note: null
 blockers: []
 decisions_recent: []
 milestones: []

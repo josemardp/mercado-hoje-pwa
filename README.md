@@ -60,7 +60,7 @@ Todas as tabelas de dados do usuário usam `user_id UUID REFERENCES auth.users(i
 | `mh_reset_cutoffs` | Cutoff de reset por usuário+dia+domínio (compras/rotina/agenda) — usado pelas RPCs condicionais pra rejeitar reinserção de dado apagado |
 | `mh_processed_operations` | Registro de `operation_id` já aplicados — garante que um incremento de `use_count` reenviado (retry offline) nunca é contado duas vezes |
 
-**RPCs principais** (todas comparam `updated_at`/`p_updated_at` no servidor antes de gravar): `upsert_day_item_if_newer`, `upsert_rotina_step_if_newer`, `upsert_agenda_task_if_newer`, `update_item_category_if_newer`, `update_item_use_count_if_newer`, `upsert_item_reconcile_name`, `increment_use_count` (idempotente via `operation_id`), `reset_day_domain`, `get_reset_cutoff`.
+**RPCs principais** (todas comparam `updated_at`/`p_updated_at` no servidor antes de gravar): `upsert_day_item_if_newer`, `upsert_rotina_step_if_newer`, `upsert_agenda_task_if_newer`, `update_item_category_if_newer`, `upsert_item_reconcile_name`, `increment_use_count` (idempotente via `operation_id`), `reset_day_domain`, `get_reset_cutoff`.
 
 ---
 

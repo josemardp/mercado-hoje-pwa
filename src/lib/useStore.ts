@@ -267,6 +267,34 @@ export function useDayState(user: User | null) {
     return () => window.removeEventListener('mh:item-remapped', handler);
   }, []);
 
+  // Listen for day-item reconciliation events when a remote write was rejected
+  // by Supabase (applied === false) and db.ts rewrote Dexie to the canonical row.
+  useEffect(() => {
+    if (!user) return;
+    const handler = (e: Event) => {
+      const { dayKey, itemId } = (e as CustomEvent<{ dayKey: string; itemId: string }>).detail;
+      if (dayKey !== todayKey) return;
+      (async () => {
+        const rec = await db.dayItems.get([dayKey, itemId]);
+        setState(prev => {
+          const checked = { ...prev.checked };
+          const postponed = { ...prev.postponed };
+          const inToday = { ...prev.inToday };
+          const qty = { ...prev.qty };
+
+          if (rec?.checked) checked[itemId] = true; else delete checked[itemId];
+          if (rec?.postponed) postponed[itemId] = true; else delete postponed[itemId];
+          if (rec?.inToday) inToday[itemId] = true; else delete inToday[itemId];
+          if (rec?.qty && rec.qty > 1) qty[itemId] = rec.qty; else delete qty[itemId];
+
+          return { checked, postponed, inToday, qty };
+        });
+      })();
+    };
+    window.addEventListener('mh:day-item-reconciled', handler);
+    return () => window.removeEventListener('mh:day-item-reconciled', handler);
+  }, [todayKey, user]);
+
   // ─── Load day state with LWW merge + carry over postponed ──────
   useEffect(() => {
     if (!user) {
@@ -313,11 +341,13 @@ export function useDayState(user: User | null) {
           .and(item => item.userId === userId)
           .toArray();
 
-        if (staleItems.length > 0) {
+        // S1-01: When online, do NOT run carry-over yet — wait for the remote pull
+        // so that items already bought on another device are merged first,
+        // preventing a stale local copy from unchecking them.
+        if (!isOnline && staleItems.length > 0) {
           const toCarry = selectCarryOverItems(staleItems);
 
           if (toCarry.length > 0) {
-            const now = Date.now();
             const alreadyToday = new Set(localItems.map(item => item.itemId));
             const carriedOver = toCarry
               .filter(item => !alreadyToday.has(item.itemId))
@@ -327,22 +357,12 @@ export function useDayState(user: User | null) {
                 checked: false,
                 postponed: false,
                 inToday: true,
-                updatedAt: now,
+                updatedAt: item.updatedAt || Date.now(),
                 userId,
               }));
 
             if (carriedOver.length > 0) {
               await db.dayItems.bulkAdd(carriedOver);
-
-              for (const item of carriedOver) {
-                await db.syncQueue.add({
-                  type: 'unpostpone',
-                  dayKey: todayKey,
-                  itemId: item.itemId,
-                  timestamp: now,
-                });
-              }
-
               localItems = [...localItems, ...carriedOver];
             }
           }
@@ -407,7 +427,8 @@ export function useDayState(user: User | null) {
               await db.dayItems.bulkDelete(staleIds.map(id => [todayKey, id] as [string, string]));
             }
 
-            if (remoteStaleItems && remoteStaleItems.length > 0) {
+            const allStale = [...staleItems, ...(remoteStaleItems || [])];
+            if (allStale.length > 0) {
               const alreadyToday = new Set(userMerged.map(item => item.itemId));
               // Mesma regra do carry-over local, mas pesando as linhas do
               // Supabase JUNTO com as locais dos mesmos dias: se uma compra
@@ -415,34 +436,21 @@ export function useDayState(user: User | null) {
               // Supabase continua dizendo "não comprado" para aquele dia e,
               // sozinho, ressuscitaria o item como pendente. Misturando as
               // duas fontes, a linha mais recente de cada item vence.
-              const toCarry = selectCarryOverItems([...staleItems, ...remoteStaleItems])
+              const toCarry = selectCarryOverItems(allStale)
                 .filter(item => !alreadyToday.has(item.itemId));
 
               if (toCarry.length > 0) {
-                const now = Date.now();
                 const recovered: DayItemRecord[] = toCarry.map(item => ({
                   dayKey: todayKey,
                   itemId: item.itemId,
                   checked: false,
                   postponed: false,
                   inToday: true,
-                  updatedAt: now,
+                  updatedAt: item.updatedAt || Date.now(),
                   userId,
                 }));
 
                 userMerged = [...userMerged, ...recovered];
-                // Raw db.syncQueue.add (not addToSyncQueueLocal, which is
-                // declared later in this hook and out of scope here) —
-                // matches the local carry-over above; the next queue drain
-                // picks these up like any other pending entry.
-                for (const item of recovered) {
-                  await db.syncQueue.add({
-                    type: 'unpostpone',
-                    dayKey: todayKey,
-                    itemId: item.itemId,
-                    timestamp: now,
-                  });
-                }
               }
             }
 
@@ -781,6 +789,37 @@ export function useDayState(user: User | null) {
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
+  const removeItemFromToday = useCallback(async (itemId: string) => {
+    if (!user) return;
+    const newState = { ...state };
+    newState.checked = { ...newState.checked };
+    newState.postponed = { ...newState.postponed };
+    newState.inToday = { ...newState.inToday };
+    newState.qty = { ...newState.qty };
+
+    delete newState.inToday[itemId];
+    delete newState.checked[itemId];
+    delete newState.postponed[itemId];
+    delete newState.qty[itemId];
+
+    setState(newState);
+
+    await db.dayItems.delete([todayKey, itemId]);
+
+    await saveSingleItemState(itemId, {
+      checked: false,
+      postponed: false,
+      inToday: false,
+    });
+
+    await addToSyncQueueLocal({
+      type: 'unmark',
+      dayKey: todayKey,
+      itemId,
+      timestamp: Date.now(),
+    });
+  }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
+
   // S3-08: increment an item's per-day quantity by `delta`.
   // If the item isn't on today's list yet, this also adds it.
   const incrementItemQty = useCallback(async (itemId: string, itemRecord: ItemRecord, delta: number) => {
@@ -805,8 +844,8 @@ export function useDayState(user: User | null) {
     setState(newState);
 
     await saveSingleItemState(itemId, {
-      checked: false,
-      postponed: false,
+      checked: !!newState.checked[itemId],
+      postponed: !!newState.postponed[itemId],
       inToday: true,
       qty: newQty,
     });
@@ -875,6 +914,7 @@ export function useDayState(user: User | null) {
     unmarkAllChecked,
     resetAll,
     addItemToToday,
+    removeItemFromToday,
     incrementItemQty,
     updateItemQty,
     syncCategory,

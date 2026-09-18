@@ -227,6 +227,7 @@ function AppInner() {
     unmarkAllChecked,
     resetAll,
     addItemToToday,
+    removeItemFromToday,
     incrementItemQty,
     updateItemQty,
     syncCategory,
@@ -234,6 +235,8 @@ function AppInner() {
     retryStuckEntries,
     processSyncQueue,
   } = useDayState(user);
+
+  const { isInstallable, isIOS, install } = useInstallPrompt();
 
   const [retryingStuck, setRetryingStuck] = useState(false);
   const handleRetryStuckSync = useCallback(async () => {
@@ -357,8 +360,6 @@ function AppInner() {
   // AUD-017: ARIA combobox pattern — the input keeps real DOM focus; arrow
   // keys move this "virtual" highlight instead of tabbing between options.
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [correctionItemId, setCorrectionItemId] = useState<string | null>(null);
-  const [correctionShowPicker, setCorrectionShowPicker] = useState(false);
   const [celebration, setCelebration] = useState('');
   const [celebrationShow, setCelebrationShow] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>(() =>
@@ -394,11 +395,6 @@ function AppInner() {
   const todayKey = getTodayKey();
   const dateStr = formatDateBR(todayKey);
   const loading = stateLoading || itemsLoading;
-
-  const requestCategoryCorrection = useCallback((itemId: string | null) => {
-    setCorrectionItemId(itemId);
-    setCorrectionShowPicker(true);
-  }, []);
 
   // Filter items that are explicitly in today's shopping list
   const allItemsForDay = useMemo(
@@ -495,22 +491,6 @@ function AppInner() {
     }
   }, [user, exportingData, showToast]);
 
-  const handleCategoryCorrection = useCallback(async (newCategory: string) => {
-    if (correctionItemId == null) return;
-    const item = items.find(i => i.id === correctionItemId);
-    if (!item) return;
-    const cat = getCategoryByKey(newCategory);
-    const catName = cat ? cat.name : 'Outros';
-
-    // Update local DB
-    await syncCategory(correctionItemId, newCategory);
-    // Also update the items state so the UI re-renders immediately
-    setItemCategory(correctionItemId, newCategory);
-    setCorrectionShowPicker(false);
-    setCorrectionItemId(null);
-    showToast(`🔄 "${item.name}" movido para ${catName}`);
-  }, [correctionItemId, items, syncCategory, setItemCategory, showToast]);
-
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
     setHighlightedIndex(-1);
@@ -596,7 +576,6 @@ function AppInner() {
         };
         await addItemToToday(newItemRecord);
         showToast(`🆕 "${name}" em ${catName} — toque em ✏️ se quiser corrigir`);
-        requestCategoryCorrection(newId);
       }
     } catch (err) {
       logError('Failed to classify item', err);
@@ -613,10 +592,9 @@ function AppInner() {
         };
         await addItemToToday(newItemRecord);
         showToast(`🆕 "${name}" adicionado!`);
-        requestCategoryCorrection(newId);
       }
     }
-  }, [inputValue, items, handleSelectSuggestion, addItem, showToast, requestCategoryCorrection, addItemToToday, user]);
+  }, [inputValue, items, handleSelectSuggestion, addItem, showToast, addItemToToday, user]);
 
   const handleToggle = useCallback(async (item: ItemRecord) => {
     const willBeChecked = await toggleItem(item.id, item);
@@ -644,11 +622,7 @@ function AppInner() {
     if (delta > 0) {
       showToast(`➕ ${item.name} — ${newQty}x`);
     } else {
-      if (newQty <= 1) {
-        showToast(`🗑️ ${item.name} removido da lista`);
-      } else {
-        showToast(`➖ ${item.name} — ${newQty}x`);
-      }
+      showToast(`➖ ${item.name} — ${newQty}x`);
     }
   }, [incrementItemQty, state.qty, showToast]);
 
@@ -675,11 +649,11 @@ function AppInner() {
     if (!editItemData) return;
     const parsed = parseInt(editQtyInput, 10);
     if (isNaN(parsed) || parsed < 1) {
-      // Below 1 means the user wants to remove the item.
-      // We handle this as a toggle (unmark + remove from today).
-      await toggleItem(editItemData.itemId);
+      // Below 1 means the user wants to remove the item from today's list.
+      await removeItemFromToday(editItemData.itemId);
       setShowEditItemModal(false);
       setEditItemData(null);
+      showToast(`🗑️ "${editItemData.itemName}" removido da lista`);
       return;
     }
     // S3-09 fix: if quantity changed, update it
@@ -704,15 +678,15 @@ function AppInner() {
       parts.push(cat ? `→ ${cat.name}` : '');
     }
     showToast(`✏️ "${editItemData.itemName}" — ${parts.join(', ')}`);
-  }, [editItemData, editQtyInput, editCategoryInput, updateItemQty, toggleItem, showToast, items, syncCategory, setItemCategory]);
+  }, [editItemData, editQtyInput, editCategoryInput, updateItemQty, removeItemFromToday, showToast, items, syncCategory, setItemCategory]);
 
   const handleRemoveFromList = useCallback(async () => {
     if (!editItemData) return;
-    await toggleItem(editItemData.itemId);
+    await removeItemFromToday(editItemData.itemId);
     setShowEditItemModal(false);
     setEditItemData(null);
     showToast(`🗑️ "${editItemData.itemName}" removido da lista`);
-  }, [editItemData, toggleItem, showToast]);
+  }, [editItemData, removeItemFromToday, showToast]);
 
   const todayItems = allItemsForDay;
   const checkedCount = allItemsForDay.filter(i => state.checked[i.id]).length;
@@ -750,12 +724,21 @@ function AppInner() {
     [items, state.postponed],
   );
 
-  const { isInstallable, isIOS, install: installApp } = useInstallPrompt();
-
   // ─── LOGIN SCREEN RENDER ───
   if (!user && !stateLoading) {
     return (
       <div className="page">
+        {needRefresh && (
+          <div className="update-banner update-banner-global" role="status">
+            <span>✨ Nova versão disponível.</span>
+            <button
+              className="update-banner-btn"
+              onClick={() => updateServiceWorker(true)}
+            >
+              Atualizar
+            </button>
+          </div>
+        )}
         <div className="login-wrap">
           <div className="login-card">
             <h1 className="login-title">Meu Diário</h1>
@@ -887,7 +870,7 @@ function AppInner() {
             ) : (
               <button
                 className="install-btn"
-                onClick={() => installApp()}
+                onClick={() => install()}
                 aria-label="Instalar app"
                 title="Instalar Meu Diário"
               >
@@ -1292,6 +1275,14 @@ function AppInner() {
           )}
         </div>
         <div className="footer-links">
+          {isInstallable && (
+            <button
+              className="login-forgot-link install-app-btn"
+              onClick={() => (isIOS ? setShowIosInstallModal(true) : install())}
+            >
+              📲 Instalar no celular
+            </button>
+          )}
           <button
             className="login-forgot-link"
             onClick={handleExportData}

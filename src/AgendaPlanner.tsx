@@ -146,7 +146,14 @@ export default function AgendaPlanner({
   const hasScheduleAny = useMemo(() => tasks.some(t => t.scheduledStart), [tasks]);
   const sortedTasks = useMemo(() => {
     if (!hasScheduleAny) return tasks.slice().sort((a, b) => a.order - b.order);
-    return tasks.slice().sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''));
+    return tasks.slice().sort((a, b) => {
+      if (a.scheduledStart && b.scheduledStart) {
+        return a.scheduledStart.localeCompare(b.scheduledStart);
+      }
+      if (a.scheduledStart) return -1;
+      if (b.scheduledStart) return 1;
+      return a.order - b.order;
+    });
   }, [tasks, hasScheduleAny]);
 
   const canStartGo = useMemo(() => tasks.some(t => t.scheduledStart && t.scheduledEnd && !t.done), [tasks]);

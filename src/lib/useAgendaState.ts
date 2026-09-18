@@ -361,17 +361,21 @@ export function useAgendaState(user: User | null) {
 
     let updated: AgendaTaskRecord[];
     if (isScheduled) {
-      const slots = tasks
-        .filter(t => t.scheduledStart && t.scheduledEnd)
+      // Fixed tasks retain their fixed slot. Flexible slots are assigned in time order.
+      const flexSlots = tasks
+        .filter(t => !t.fixed && t.scheduledStart && t.scheduledEnd)
         .slice()
         .sort((a, b) => (a.scheduledStart || '').localeCompare(b.scheduledStart || ''))
         .map(t => ({ scheduledStart: t.scheduledStart, scheduledEnd: t.scheduledEnd }));
-      let slotIdx = 0;
+      let flexSlotIdx = 0;
       updated = newOrderIds.reduce<AgendaTaskRecord[]>((acc, id, i) => {
         const t = byId.get(id);
         if (!t) return acc;
-        if (t.scheduledStart && t.scheduledEnd) {
-          acc.push({ ...t, ...slots[slotIdx++], order: i, updatedAt: now });
+        if (t.fixed) {
+          // Fixed tasks keep their fixed schedule
+          acc.push({ ...t, order: i, updatedAt: now });
+        } else if (t.scheduledStart && t.scheduledEnd && flexSlotIdx < flexSlots.length) {
+          acc.push({ ...t, ...flexSlots[flexSlotIdx++], order: i, updatedAt: now });
         } else {
           acc.push({ ...t, order: i, updatedAt: now });
         }
@@ -387,7 +391,7 @@ export function useAgendaState(user: User | null) {
 
     const updatedById = new Map(updated.map(t => [t.id, t]));
     setTasks(prev => prev.map(t => updatedById.get(t.id) ?? t));
-    for (const t of updated) await persistTask(t);
+    await Promise.all(updated.map(t => persistTask(t)));
   }, [tasks, persistTask]);
 
   // Soft-deletes every task in today's agenda — the "reiniciar" action for
