@@ -250,7 +250,7 @@ export function useAgendaState(user: User | null) {
   }, []);
 
   const addToSyncQueueLocal = useCallback(async (taskId: string) => {
-    await db.agendaSyncQueue.add({ type: 'upsert', taskId, userId: user?.id, timestamp: Date.now(), attemptCount: 0 });
+    await db.agendaSyncQueue.add({ type: 'upsert', taskId, userId: user?.id, timestamp: getServerNow(), attemptCount: 0 });
     if (isOnline && user) processPendingQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);

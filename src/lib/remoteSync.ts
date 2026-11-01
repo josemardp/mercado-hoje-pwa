@@ -91,7 +91,9 @@ function scheduleEmit(domain: RemoteSyncDomain, change?: RemoteChange) {
  *
  * O Realtime entrega a mudança assim que o outro aparelho grava; o polling
  * cobre o que ele não entrega (canal ainda conectando, publicação não
- * habilitada no projeto, DELETE sem replica identity, rede instável).
+ * habilitada no projeto, rede instável). O "Limpar lista" grava também em
+ * mh_reset_cutoffs, que não está na publicação: quem aplica o cutoff no outro
+ * aparelho é o pull disparado pelo DELETE ou pelo polling.
  */
 export function startRemoteSync(userId: string): () => void {
   const channel = supabase.channel(`mh-sync-${userId}`);

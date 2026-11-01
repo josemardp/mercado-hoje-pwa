@@ -41,7 +41,10 @@ export function getServerNow(): number {
 export async function syncServerClock(): Promise<void> {
   try {
     const startedAt = Date.now();
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+    // /rest/v1, não /auth/v1: em chamada cross-origin o JS só enxerga o Date
+    // se o servidor o listar em Access-Control-Expose-Headers. O PostgREST
+    // lista; o GoTrue não, e ali headers.get('date') volta null em silêncio.
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/mh_items?select=id&limit=0`, {
       method: 'GET',
       cache: 'no-store',
       headers: { apikey: SUPABASE_ANON_KEY },
@@ -429,7 +432,7 @@ export async function initializeDefaultItems(userId: string) {
         );
       if (error) throw new Error(error.message);
     } catch {
-      const now = Date.now();
+      const now = getServerNow();
       await db.syncQueue.bulkAdd(localDefaults.map(item => ({
         type: 'add' as const,
         dayKey: '',

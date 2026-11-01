@@ -226,7 +226,7 @@ export function useRotinaStepDefs(user: User | null) {
   }, [user]);
 
   const addToSyncQueueLocal = useCallback(async (stepDefId: string) => {
-    await db.rotinaStepDefSyncQueue.add({ type: 'upsert', stepDefId, userId: user?.id, timestamp: Date.now(), attemptCount: 0 });
+    await db.rotinaStepDefSyncQueue.add({ type: 'upsert', stepDefId, userId: user?.id, timestamp: getServerNow(), attemptCount: 0 });
     if (isOnline && user) processPendingQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, user]);

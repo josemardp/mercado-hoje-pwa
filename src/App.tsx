@@ -259,11 +259,22 @@ function AppInner() {
   // Sincronização entre aparelhos: um único canal Realtime para a sessão,
   // mais alinhamento do relógio local com o do servidor (o LWW usa timestamps
   // do cliente; um celular com relógio atrasado perdia toda disputa para o PC).
+  // Depende do id, não do objeto: o Supabase emite SIGNED_IN a cada volta de
+  // foco com um `user` novo, e [user] derrubaria o canal toda vez.
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     void syncServerClock();
-    return startRemoteSync(user.id);
-  }, [user]);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void syncServerClock();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    const stopRemoteSync = startRemoteSync(userId);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      stopRemoteSync();
+    };
+  }, [userId]);
 
   // AUD-010: "Limpar marcações" used to fire resetAll() (which wipes the
   // whole day's list, not just the checkmarks the label implied) with zero

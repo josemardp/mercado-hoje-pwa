@@ -380,7 +380,7 @@ export function useDayState(user: User | null) {
                 checked: false,
                 postponed: false,
                 inToday: true,
-                updatedAt: item.updatedAt || Date.now(),
+                updatedAt: item.updatedAt || getServerNow(),
                 userId,
               }));
 
@@ -472,7 +472,7 @@ export function useDayState(user: User | null) {
                   checked: false,
                   postponed: false,
                   inToday: true,
-                  updatedAt: item.updatedAt || Date.now(),
+                  updatedAt: item.updatedAt || getServerNow(),
                   userId,
                 }));
 
@@ -657,7 +657,7 @@ export function useDayState(user: User | null) {
         type: 'unmark',
         dayKey: todayKey,
         itemId,
-        timestamp: Date.now(),
+        timestamp: getServerNow(),
       });
     }
 
@@ -691,7 +691,7 @@ export function useDayState(user: User | null) {
       type: 'postpone',
       dayKey: todayKey,
       itemId,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
 
     return newState;
@@ -718,7 +718,7 @@ export function useDayState(user: User | null) {
       type: 'unpostpone',
       dayKey: todayKey,
       itemId,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
 
     return newState;
@@ -746,7 +746,7 @@ export function useDayState(user: User | null) {
         type: 'unmark',
         dayKey: todayKey,
         itemId,
-        timestamp: Date.now(),
+        timestamp: getServerNow(),
       });
     }
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
@@ -811,7 +811,7 @@ export function useDayState(user: User | null) {
       emoji: item.emoji,
       useCount: item.useCount,
       lastUsed: item.lastUsed,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
@@ -842,7 +842,7 @@ export function useDayState(user: User | null) {
       type: 'unmark',
       dayKey: todayKey,
       itemId,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
@@ -880,7 +880,7 @@ export function useDayState(user: User | null) {
       type: 'updateQty',
       dayKey: todayKey,
       itemId,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
 
     // If the item wasn't on the list before, also sync the catalog entry.
@@ -895,7 +895,7 @@ export function useDayState(user: User | null) {
         emoji: itemRecord.emoji,
         useCount: itemRecord.useCount,
         lastUsed: itemRecord.lastUsed,
-        timestamp: Date.now(),
+        timestamp: getServerNow(),
       });
     }
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
@@ -921,7 +921,7 @@ export function useDayState(user: User | null) {
       type: 'updateQty',
       dayKey: todayKey,
       itemId,
-      timestamp: Date.now(),
+      timestamp: getServerNow(),
     });
   }, [state, saveSingleItemState, addToSyncQueueLocal, todayKey, user]);
 
@@ -1230,7 +1230,7 @@ export function useItems(user: User | null) {
             p_qty: newItem.qty || 1,
             p_use_count: newItem.useCount,
             p_last_used: newItem.lastUsed,
-            p_updated_at: new Date(newItem.lastUsed || Date.now()).toISOString(),
+            p_updated_at: new Date(newItem.lastUsed || getServerNow()).toISOString(),
             p_user_id: user.id,
           });
           if (error) throw new Error(error.message);
@@ -1248,7 +1248,7 @@ export function useItems(user: User | null) {
             emoji: newItem.emoji,
             useCount: newItem.useCount,
             lastUsed: newItem.lastUsed,
-            timestamp: Date.now(),
+            timestamp: getServerNow(),
             attemptCount: 0,
           });
         }
@@ -1263,7 +1263,7 @@ export function useItems(user: User | null) {
           emoji: newItem.emoji,
           useCount: newItem.useCount,
           lastUsed: newItem.lastUsed,
-          timestamp: Date.now(),
+          timestamp: getServerNow(),
           attemptCount: 0,
         });
       }

@@ -1,4 +1,4 @@
-import { db, supabase, type RotinaStepDefRecord, type RotinaStepDefSyncQueueEntry } from './db';
+import { db, supabase, getServerNow, type RotinaStepDefRecord, type RotinaStepDefSyncQueueEntry } from './db';
 import { ROTINA_STEPS } from './rotinaSteps';
 import { logSyncFailure, logReconciliation } from './logger';
 
@@ -180,7 +180,7 @@ export async function seedDefaultRotinaSteps(userId: string): Promise<void> {
     // Offline or network error: fall back to the local literal seed below.
   }
 
-  const now = Date.now();
+  const now = getServerNow();
   const seeded: RotinaStepDefRecord[] = ROTINA_STEPS.map(step => ({
     id: step.id,
     title: step.title,
