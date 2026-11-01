@@ -15,13 +15,13 @@ status:
   health: unknown
   phase: null
   priority: null
-  updated_at: 2026-11-01T17:08:58-03:00
-  last_session_at: 2026-11-01T17:08:19-03:00
+  updated_at: 2026-11-01T19:50:33-03:00
+  last_session_at: 2026-11-01T19:50:33-03:00
   confidence: confirmed
 focus:
   objective: Consertar a sincronização entre celular e PC e publicar a correção no ar.
-  current: Validar em uso real a marcação, desmarcação e criação de item nos dois aparelhos, com a migration aplicada (act-005).
-  last_completed: typecheck, lint, 95 testes e build passando; deploy do GitHub Pages concluído
+  current: Validar em uso real a sincronizacao entre PC e celular com a migration aplicada
+  last_completed: "App publicado em dois aparelhos simulados: 0,8s do PC ao celular e 1,0s do celular ao PC, sem recarregar"
   recommended_next_action: act-007
 next_actions:
   - id: act-001
@@ -108,6 +108,54 @@ next_actions:
     created_at: 2026-11-01T17:08:19-03:00
     done_at: null
     note: null
+  - id: act-008
+    title: Aplicar a migration de Realtime no Supabase e verificar publicacao e REPLICA IDENTITY
+    status: done_tested
+    impact: 4
+    urgency: 4
+    effort: xs
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-11-01T19:08:12-03:00
+    done_at: 2026-11-01T19:08:19-03:00
+    note: "Aplicada pelo SQL Editor do dashboard na conta lojadares (perfil dedicado). Verificacao: 5 tabelas com in_pub=true e relreplident=f."
+  - id: act-009
+    title: Validar em uso real a sincronização entre PC e celular com o Realtime ativo (act-007).
+    status: dropped
+    impact: null
+    urgency: null
+    effort: null
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-11-01T19:08:33-03:00
+    done_at: null
+    note: Duplicata da act-007; mantida apenas a original.
+  - id: act-010
+    title: Fazer categoria editada em outro aparelho chegar ao catalogo (merge de useItems so olha last_used)
+    status: pending
+    impact: 2
+    urgency: 2
+    effort: s
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-11-01T19:50:03-03:00
+    done_at: null
+    note: null
+  - id: act-011
+    title: Descobrir por que push na main nao dispara o deploy e hoje exige gh workflow run
+    status: pending
+    impact: 3
+    urgency: 2
+    effort: s
+    due_date: null
+    unblocks: []
+    blocked_by: []
+    created_at: 2026-11-01T19:50:08-03:00
+    done_at: null
+    note: null
 blockers: []
 decisions_recent:
   - date: 2026-09-18
@@ -120,6 +168,16 @@ decisions_recent:
     text: "`updated_at` segue o relógio do servidor via offset do header `Date`, respeitando a tolerância de 2s já existente no LWW."
   - date: 2026-11-01
     text: Eventos de `mh_items` que mudam só `use_count` não disparam recarga do catálogo.
+  - date: 2026-11-01
+    text: Manter a migration no repositório como registro do estado aplicado.
+  - date: 2026-11-01
+    text: Verificação feita por consulta ao catálogo, não por inspeção visual do dashboard.
+  - date: 2026-11-01
+    text: Aceitar que o DELETE do Realtime ignora RLS e expõe só a chave primária (D-024).
+  - date: 2026-11-01
+    text: Não reprocessar a fila no Realtime nem no polling, para falha passageira não esgotar as tentativas a cada 15s.
+  - date: 2026-11-01
+    text: "Manter o filtro de `use_count`: o `old` veio completo no UPDATE em teste real, apesar da documentação."
 milestones: []
 review:
   stale_after_days: null
