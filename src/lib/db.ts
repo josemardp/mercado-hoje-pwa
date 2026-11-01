@@ -14,6 +14,59 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // Configured client using standard anon key
 export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ─── Relógio alinhado com o servidor ───────────────────────────────
+// O merge entre aparelhos (LWW) compara os timestamps gravados por cada
+// cliente. Se o relógio de um celular estiver alguns minutos atrasado, toda
+// alteração feita nele perde para uma linha mais antiga do PC — a alteração
+// "volta atrás" na tela. Guardamos o desvio em relação ao servidor (header
+// Date, resolução de 1s, absorvida pela tolerância de 2s do merge) e usamos
+// getServerNow() em tudo que vira updated_at.
+const SERVER_CLOCK_OFFSET_KEY = 'mh_server_clock_offset_ms';
+const MAX_CLOCK_OFFSET_MS = 24 * 60 * 60 * 1000;
+
+let serverClockOffsetMs = 0;
+try {
+  const stored = Number(localStorage.getItem(SERVER_CLOCK_OFFSET_KEY));
+  if (Number.isFinite(stored) && Math.abs(stored) < MAX_CLOCK_OFFSET_MS) {
+    serverClockOffsetMs = stored;
+  }
+} catch {
+  // localStorage indisponível: segue com o relógio local.
+}
+
+export function getServerNow(): number {
+  return Date.now() + serverClockOffsetMs;
+}
+
+export async function syncServerClock(): Promise<void> {
+  try {
+    const startedAt = Date.now();
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    const finishedAt = Date.now();
+    const dateHeader = response.headers.get('date');
+    if (!dateHeader) return;
+
+    const serverMs = new Date(dateHeader).getTime();
+    if (!Number.isFinite(serverMs)) return;
+
+    const offset = serverMs + Math.round((finishedAt - startedAt) / 2) - finishedAt;
+    if (Math.abs(offset) > MAX_CLOCK_OFFSET_MS) return;
+
+    serverClockOffsetMs = offset;
+    try {
+      localStorage.setItem(SERVER_CLOCK_OFFSET_KEY, String(offset));
+    } catch {
+      // Sem persistência: o offset vale para esta sessão.
+    }
+  } catch {
+    // Offline ou endpoint inacessível: mantém o último offset conhecido.
+  }
+}
+
 // ─── Interfaces ────────────────────────────────────────────────────
 export interface ItemRecord {
   id: string; // UUID v4
@@ -964,7 +1017,7 @@ export async function processSyncQueue(
  * Goes through update_item_category_if_newer so a stale queued correction
  * can never undo a more recent one made from another device.
  */
-export async function syncCategoryToSupabase(itemId: string, userId: string, newCategory: string, updatedAt: number = Date.now()): Promise<boolean> {
+export async function syncCategoryToSupabase(itemId: string, userId: string, newCategory: string, updatedAt: number = getServerNow()): Promise<boolean> {
   try {
     const { data: applied, error } = await supabase.rpc('update_item_category_if_newer', {
       p_id: itemId,

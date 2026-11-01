@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
-import { db, MAX_SYNC_ATTEMPTS, type AgendaTaskRecord } from './db';
+import { db, MAX_SYNC_ATTEMPTS, getServerNow, type AgendaTaskRecord } from './db';
 import {
   loadAgendaTasksFromSupabase, mergeAgendaTasksWithLWW,
   syncAgendaTaskToSupabase, processAgendaSyncQueue,
 } from './agendaDb';
+import { useRemoteChanges } from './remoteSync';
 import { getTodayKey } from './categories';
 import { estimateDurationMinutes, FLOOR_MINUTES } from './agendaDurationEstimator';
 import { generateSchedule as computeSchedule, type SchedulableTask } from './agendaScheduler';
 import { logError, logQueueHealth } from './logger';
 
 // S2-09: see useStore.ts's identical constant for the rationale.
-const FOCUS_SYNC_THROTTLE_MS = 30000;
+const FOCUS_SYNC_THROTTLE_MS = 2000;
 
 // Same shape/constraints as useRotinaState: takes `user` as a parameter
 // (resolved once in App.tsx) instead of its own auth subscription.
@@ -23,6 +24,11 @@ export function useAgendaState(user: User | null) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
   const [focusRefresh, setFocusRefresh] = useState(false);
+  const initialLoadDoneRef = useRef(false);
+
+  useEffect(() => {
+    initialLoadDoneRef.current = false;
+  }, [user?.id]);
 
   const todayKey = getTodayKey();
 
@@ -135,8 +141,10 @@ export function useAgendaState(user: User | null) {
       const now = Date.now();
       if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
       lastFocusSyncRef.current = now;
-      processPendingQueue();
-      setFocusRefresh(prev => !prev);
+      void (async () => {
+        await processPendingQueue();
+        setFocusRefresh(prev => !prev);
+      })();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') trigger();
@@ -148,6 +156,11 @@ export function useAgendaState(user: User | null) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, isOnline, processPendingQueue]);
+
+  useRemoteChanges('agenda', useCallback(() => {
+    if (!user || !isOnline) return;
+    setFocusRefresh(prev => !prev);
+  }, [user, isOnline]));
 
   // ─── Load today's tasks, LWW-merged with remote ─────────────────────
   useEffect(() => {
@@ -164,7 +177,7 @@ export function useAgendaState(user: User | null) {
 
     async function load() {
       try {
-        setLoading(true);
+        if (!initialLoadDoneRef.current) setLoading(true);
         const localItems = await db.agendaTasks
           .where('dayKey')
           .equals(todayKey)
@@ -176,7 +189,10 @@ export function useAgendaState(user: User | null) {
       } catch (err) {
         logError('Failed to load agenda tasks', err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          initialLoadDoneRef.current = true;
+          setLoading(false);
+        }
       }
 
       if (isOnline) {
@@ -266,7 +282,7 @@ export function useAgendaState(user: User | null) {
   const addTask = useCallback(async (title: string, opts?: { fixed?: boolean; fixedStart?: string }): Promise<string> => {
     if (!user) return '';
     const id = crypto.randomUUID();
-    const now = Date.now();
+    const now = getServerNow();
     const record: AgendaTaskRecord = {
       id,
       dayKey: todayKey,
@@ -289,7 +305,7 @@ export function useAgendaState(user: User | null) {
   const patchTask = useCallback(async (id: string, patch: Partial<AgendaTaskRecord>) => {
     const existing = tasks.find(t => t.id === id);
     if (!existing) return;
-    const updated: AgendaTaskRecord = { ...existing, ...patch, updatedAt: Date.now() };
+    const updated: AgendaTaskRecord = { ...existing, ...patch, updatedAt: getServerNow() };
     setTasks(prev => prev.map(t => (t.id === id ? updated : t)));
     await persistTask(updated);
   }, [tasks, persistTask]);
@@ -322,7 +338,7 @@ export function useAgendaState(user: User | null) {
   const removeTask = useCallback(async (id: string) => {
     const existing = tasks.find(t => t.id === id);
     if (!existing) return;
-    const updated: AgendaTaskRecord = { ...existing, deleted: true, updatedAt: Date.now() };
+    const updated: AgendaTaskRecord = { ...existing, deleted: true, updatedAt: getServerNow() };
     setTasks(prev => prev.filter(t => t.id !== id));
     await persistTask(updated);
   }, [tasks, persistTask]);
@@ -337,7 +353,7 @@ export function useAgendaState(user: User | null) {
     const swapIdx = idx + direction;
     if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return;
 
-    const now = Date.now();
+    const now = getServerNow();
     const a = sorted[idx];
     const b = sorted[swapIdx];
     const updatedA: AgendaTaskRecord = { ...a, order: b.order, updatedAt: now };
@@ -357,7 +373,7 @@ export function useAgendaState(user: User | null) {
   const reorderTasks = useCallback(async (newOrderIds: string[]) => {
     const byId = new Map(tasks.map(t => [t.id, t]));
     const isScheduled = tasks.some(t => t.scheduledStart);
-    const now = Date.now();
+    const now = getServerNow();
 
     let updated: AgendaTaskRecord[];
     if (isScheduled) {
@@ -397,7 +413,7 @@ export function useAgendaState(user: User | null) {
   // Soft-deletes every task in today's agenda — the "reiniciar" action for
   // Agenda mode, mirroring resetToday()'s role for the fixed routine.
   const clearAll = useCallback(async () => {
-    const now = Date.now();
+    const now = getServerNow();
     const toDelete = tasks.map(t => ({ ...t, deleted: true, updatedAt: now }));
     setTasks([]);
     for (const t of toDelete) {
@@ -430,7 +446,7 @@ export function useAgendaState(user: User | null) {
       };
     }
 
-    const now = Date.now();
+    const now = getServerNow();
     const updatedTasks = tasks.map(t => {
       const scheduled = result.tasks.find(s => s.id === t.id);
       if (!scheduled) return t;

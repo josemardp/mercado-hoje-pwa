@@ -3,7 +3,8 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useDayState, useItems } from './lib/useStore';
 import { AuthProvider, useAuth } from './lib/AuthProvider';
 import { CATEGORIES, getCategoryByKey, getTodayKey, formatDateBR } from './lib/categories';
-import { db, type ItemRecord } from './lib/db';
+import { db, syncServerClock, getServerNow, type ItemRecord } from './lib/db';
+import { startRemoteSync } from './lib/remoteSync';
 import { useInstallPrompt } from './lib/useInstallPrompt';
 import { classifyItem, fallbackEmojiForCategory } from './lib/classifyCategory';
 import { useRotinaState } from './lib/useRotinaState';
@@ -254,6 +255,15 @@ function AppInner() {
   const rotinaStepDefs = useRotinaStepDefs(user);
   const agendaState = useAgendaState(user);
   const goModeState = useGoMode(user, agendaState.tasks, agendaState.loading, agendaState.toggleDone);
+
+  // Sincronização entre aparelhos: um único canal Realtime para a sessão,
+  // mais alinhamento do relógio local com o do servidor (o LWW usa timestamps
+  // do cliente; um celular com relógio atrasado perdia toda disputa para o PC).
+  useEffect(() => {
+    if (!user) return;
+    void syncServerClock();
+    return startRemoteSync(user.id);
+  }, [user]);
 
   // AUD-010: "Limpar marcações" used to fire resetAll() (which wipes the
   // whole day's list, not just the checkmarks the label implied) with zero
@@ -518,7 +528,7 @@ function AppInner() {
     const updatedItem: ItemRecord = {
       ...item,
       useCount: (item.useCount || 0) + 1,
-      lastUsed: Date.now(),
+      lastUsed: getServerNow(),
     };
 
     // Bump the count locally FIRST, then hand the fresh values to
@@ -571,7 +581,7 @@ function AppInner() {
           category: classification.category,
           emoji,
           useCount: 1,
-          lastUsed: Date.now(),
+          lastUsed: getServerNow(),
           userId: user?.id || '',
         };
         await addItemToToday(newItemRecord);
@@ -587,7 +597,7 @@ function AppInner() {
           category: 'outros',
           emoji: '📦',
           useCount: 1,
-          lastUsed: Date.now(),
+          lastUsed: getServerNow(),
           userId: user?.id || '',
         };
         await addItemToToday(newItemRecord);
@@ -1068,37 +1078,6 @@ function AppInner() {
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Category correction picker */}
-          {correctionShowPicker && (
-            <div className="correction-picker">
-              <div className="correction-title">Está certo?</div>
-              <div className="correction-categories">
-                {CATEGORIES.map(cat => (
-                  <button
-                    key={cat.key}
-                    className="correction-cat-btn"
-                    style={{ '--cat-color': cat.color, '--cat-bg': cat.bgColor } as React.CSSProperties}
-                    onClick={() => handleCategoryCorrection(cat.key)}
-                  >
-                    <span className="cat-emoji">{cat.emoji}</span>
-                    <span className="cat-name">{cat.name}</span>
-                  </button>
-                ))}
-                <button
-                  className="correction-cat-btn correct"
-                  onClick={() => {
-                    setCorrectionShowPicker(false);
-                    setCorrectionItemId(null);
-                    showToast('✅ Categoria mantida');
-                  }}
-                >
-                  <span className="cat-emoji">✅</span>
-                  <span className="cat-name">Correto!</span>
-                </button>
-              </div>
             </div>
           )}
         </div>

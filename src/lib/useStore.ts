@@ -6,8 +6,9 @@ import {
   selectCarryOverItems,
   processSyncQueue, syncCategoryToSupabase, compactSyncQueueEntries,
   initializeDefaultItems, MAX_SYNC_ATTEMPTS, remapItemId,
-  fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain,
+  fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain, getServerNow,
 } from './db';
+import { useRemoteChanges } from './remoteSync';
 
 import { getTodayKey } from './categories';
 import { upgradeItemClassification } from './classifyCategory';
@@ -25,9 +26,10 @@ function getTodayItems(): DayStateData {
 }
 
 // S2-09: don't re-sync on every single focus/visibility blip (e.g. rapid
-// tab switching) — once per window is enough to catch up with whatever
-// another device changed while this tab sat in the background.
-const FOCUS_SYNC_THROTTLE_MS = 30000;
+// tab switching) — a couple of seconds is enough. O canal Realtime cobre o
+// caso normal; isto é só a rede de segurança para quando ele não estiver
+// disponível (publicação desligada, rede instável).
+const FOCUS_SYNC_THROTTLE_MS = 2000;
 
 // S2-08: takes `user` as a parameter, resolved once by AuthProvider — see
 // useRotinaState/useAgendaState for the same convention. This hook used to
@@ -41,6 +43,16 @@ export function useDayState(user: User | null) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
   const [focusRefresh, setFocusRefresh] = useState(false);
+
+  // Recargas em segundo plano (Realtime/focus/polling) não podem piscar a
+  // tela de "Carregando lista..." — só a primeira carga mostra o estado.
+  const initialLoadDoneRef = useRef(false);
+
+  // Troca de conta é uma carga "de verdade" de novo (não pode herdar o
+  // "já carregou" da sessão anterior).
+  useEffect(() => {
+    initialLoadDoneRef.current = false;
+  }, [user?.id]);
 
   const todayKey = getTodayKey();
 
@@ -222,8 +234,13 @@ export function useDayState(user: User | null) {
       const now = Date.now();
       if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
       lastFocusSyncRef.current = now;
-      processPendingQueue();
-      setFocusRefresh(prev => !prev);
+      // Empurra o que está na fila ANTES de puxar o remoto: puxar primeiro
+      // poderia trazer uma linha antiga do servidor e fazê-la competir com
+      // uma alteração local que ainda nem subiu.
+      void (async () => {
+        await processPendingQueue();
+        setFocusRefresh(prev => !prev);
+      })();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') trigger();
@@ -235,6 +252,12 @@ export function useDayState(user: User | null) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, isOnline, processPendingQueue]);
+
+  // Outro aparelho gravou em mh_day_items: relê o dia e aplica o LWW.
+  useRemoteChanges('compras', useCallback(() => {
+    if (!user || !isOnline) return;
+    setFocusRefresh(prev => !prev);
+  }, [user, isOnline]));
 
   // db.ts dispatches this after remapItemId (name-collision reconciliation)
   // moves an item to its canonical id. That only touches Dexie — this
@@ -322,7 +345,7 @@ export function useDayState(user: User | null) {
       let staleItems: DayItemRecord[] = [];
 
       try {
-        setLoading(true);
+        if (!initialLoadDoneRef.current) setLoading(true);
 
         localItems = await db.dayItems
           .where('dayKey')
@@ -385,7 +408,10 @@ export function useDayState(user: User | null) {
       } catch (err) {
         logError('Failed to load day state', err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          initialLoadDoneRef.current = true;
+          setLoading(false);
+        }
       }
 
       if (isOnline) {
@@ -490,7 +516,7 @@ export function useDayState(user: User | null) {
 
   const saveSingleItemState = useCallback(async (itemId: string, itemState: Omit<DayItemRecord, 'dayKey' | 'itemId' | 'userId' | 'updatedAt'>) => {
     if (!user) return;
-    const now = Date.now();
+    const now = getServerNow();
     const itemRecord: DayItemRecord = {
       dayKey: todayKey,
       itemId,
@@ -546,7 +572,7 @@ export function useDayState(user: User | null) {
           dayKey: todayKey,
           itemId,
           category: newCategory,
-          timestamp: Date.now(),
+          timestamp: getServerNow(),
         });
       }
     } else {
@@ -555,7 +581,7 @@ export function useDayState(user: User | null) {
         dayKey: todayKey,
         itemId,
         category: newCategory,
-        timestamp: Date.now(),
+        timestamp: getServerNow(),
       });
     }
   }, [isOnline, addToSyncQueueLocal, todayKey, user]);
@@ -586,7 +612,7 @@ export function useDayState(user: User | null) {
       // Update local catalog count first — local write must be complete
       // and confirmed before any sync is triggered (item 3).
       updatedCount = (itemRecord?.useCount || 0) + 1;
-      updatedTime = Date.now();
+      updatedTime = getServerNow();
       await db.items.update(itemId, {
         useCount: updatedCount,
         lastUsed: updatedTime,
@@ -747,7 +773,7 @@ export function useDayState(user: User | null) {
       }
     }
 
-    const resetTimestamp = Date.now();
+    const resetTimestamp = getServerNow();
     await setLocalResetCutoff(user.id, todayKey, 'compras', resetTimestamp);
     await addToSyncQueueLocal({
       type: 'reset',
@@ -991,13 +1017,13 @@ export function useItems(user: User | null) {
     return () => window.removeEventListener('mh:item-remapped', handler);
   }, []);
 
-  const loadItems = useCallback(async () => {
+  const loadItems = useCallback(async (silent = false) => {
     if (!user) return;
     const requestUserId = user.id;
     const isStale = () => currentUserIdRef.current !== requestUserId;
 
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const allItems = await db.items.where('userId').equals(user.id).toArray();
       if (isStale()) return;
       allItems.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
@@ -1073,6 +1099,36 @@ export function useItems(user: User | null) {
     })();
   }, [user, loadItems]);
 
+  // Catálogo também precisa acordar quando outro aparelho cria/edita um item
+  // — antes ele só recarregava no login, então item novo do celular não
+  // aparecia no autocomplete do PC.
+  const lastCatalogSyncRef = useRef(0);
+  const refreshCatalog = useCallback(() => {
+    if (!user || !navigator.onLine) return;
+    const now = Date.now();
+    if (now - lastCatalogSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
+    lastCatalogSyncRef.current = now;
+    void loadItems(true);
+  }, [user, loadItems]);
+
+  useEffect(() => {
+    if (!user) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshCatalog();
+    };
+    window.addEventListener('focus', refreshCatalog);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', refreshCatalog);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user, refreshCatalog]);
+
+  useRemoteChanges('catalogo', useCallback((change) => {
+    if (!change.significant) return;
+    refreshCatalog();
+  }, [refreshCatalog]));
+
   const addItem = useCallback(async (name: string, category: string, emoji?: string, qty?: number): Promise<string> => {
     if (!user) throw new Error('User not logged in');
 
@@ -1085,7 +1141,7 @@ export function useItems(user: User | null) {
 
     if (existing) {
       const updatedCount = (existing.useCount || 0) + 1;
-      const updatedTime = Date.now();
+      const updatedTime = getServerNow();
       await db.items.update(existing.id, {
         category,
         emoji,
@@ -1148,7 +1204,7 @@ export function useItems(user: User | null) {
       emoji,
       qty: qty || 1,
       useCount: 1,
-      lastUsed: Date.now(),
+      lastUsed: getServerNow(),
       userId: user.id,
     };
 

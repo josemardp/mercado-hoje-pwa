@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
-import { db, type RotinaStepStateRecord, fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain } from './db';
+import { db, getServerNow, type RotinaStepStateRecord, fetchAndStoreResetCutoff, setLocalResetCutoff, resetDayDomain } from './db';
 import {
   loadRotinaStateFromSupabase, mergeRotinaStateWithLWW,
   syncRotinaStepToSupabase, processRotinaSyncQueue, MAX_SYNC_ATTEMPTS,
 } from './rotinaDb';
 import { getTodayKey } from './categories';
 import { logError, logQueueHealth } from './logger';
+import { useRemoteChanges } from './remoteSync';
 
 export interface RotinaStateData {
   done: Record<string, boolean>;
 }
 
 // S2-09: see useStore.ts's identical constant for the rationale.
-const FOCUS_SYNC_THROTTLE_MS = 30000;
+const FOCUS_SYNC_THROTTLE_MS = 2000;
 
 // Takes `user` as a parameter (resolved by useDayState in App.tsx) instead of
 // running its own auth.onAuthStateChange subscription — two independent
@@ -27,6 +28,11 @@ export function useRotinaState(user: User | null) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
   const [focusRefresh, setFocusRefresh] = useState(false);
+  const initialLoadDoneRef = useRef(false);
+
+  useEffect(() => {
+    initialLoadDoneRef.current = false;
+  }, [user?.id]);
 
   const todayKey = getTodayKey();
 
@@ -139,8 +145,10 @@ export function useRotinaState(user: User | null) {
       const now = Date.now();
       if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
       lastFocusSyncRef.current = now;
-      processPendingQueue();
-      setFocusRefresh(prev => !prev);
+      void (async () => {
+        await processPendingQueue();
+        setFocusRefresh(prev => !prev);
+      })();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') trigger();
@@ -152,6 +160,11 @@ export function useRotinaState(user: User | null) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, isOnline, processPendingQueue]);
+
+  useRemoteChanges('rotina', useCallback(() => {
+    if (!user || !isOnline) return;
+    setFocusRefresh(prev => !prev);
+  }, [user, isOnline]));
 
   // ─── Load today's state, LWW-merged with remote ────────────────────
   useEffect(() => {
@@ -168,7 +181,7 @@ export function useRotinaState(user: User | null) {
 
     async function load() {
       try {
-        setLoading(true);
+        if (!initialLoadDoneRef.current) setLoading(true);
         const localItems = await db.rotinaStepStateByUser
           .where('dayKey')
           .equals(todayKey)
@@ -183,7 +196,10 @@ export function useRotinaState(user: User | null) {
       } catch (err) {
         logError('Failed to load rotina state', err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          initialLoadDoneRef.current = true;
+          setLoading(false);
+        }
       }
 
       if (isOnline) {
@@ -266,7 +282,7 @@ export function useRotinaState(user: User | null) {
   const toggleStep = useCallback(async (stepId: string): Promise<boolean> => {
     if (!user) return false;
     const willBeDone = !state.done[stepId];
-    const now = Date.now();
+    const now = getServerNow();
 
     const record: RotinaStepStateRecord = {
       dayKey: todayKey,
@@ -338,7 +354,7 @@ export function useRotinaState(user: User | null) {
       }
     }
 
-    const resetTimestamp = Date.now();
+    const resetTimestamp = getServerNow();
     await setLocalResetCutoff(user.id, todayKey, 'rotina', resetTimestamp);
     await addToSyncQueueLocal({
       type: 'reset',

@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { type User } from '@supabase/supabase-js';
-import { db, MAX_SYNC_ATTEMPTS, type RotinaStepDefRecord } from './db';
+import { db, MAX_SYNC_ATTEMPTS, getServerNow, type RotinaStepDefRecord } from './db';
 import {
   loadRotinaStepDefsFromSupabase, mergeRotinaStepDefsWithLWW,
   syncRotinaStepDefToSupabase, processRotinaStepDefSyncQueue, seedDefaultRotinaSteps,
 } from './rotinaStepDefsDb';
 import { logError, logQueueHealth } from './logger';
+import { useRemoteChanges } from './remoteSync';
 
 // S2-09: see useStore.ts's identical constant for the rationale.
-const FOCUS_SYNC_THROTTLE_MS = 30000;
+const FOCUS_SYNC_THROTTLE_MS = 2000;
 
 // Unlike useAgendaState/useRotinaState, this hook has no day-scoping at
 // all — a step DEFINITION is a standing part of the routine, not a per-day
@@ -20,6 +21,11 @@ export function useRotinaStepDefs(user: User | null) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [stuckSyncCount, setStuckSyncCount] = useState(0);
   const [focusRefresh, setFocusRefresh] = useState(false);
+  const initialLoadDoneRef = useRef(false);
+
+  useEffect(() => {
+    initialLoadDoneRef.current = false;
+  }, [user?.id]);
 
   const steps = allSteps.filter(s => !s.deleted).sort((a, b) => a.order - b.order);
 
@@ -112,8 +118,10 @@ export function useRotinaStepDefs(user: User | null) {
       const now = Date.now();
       if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
       lastFocusSyncRef.current = now;
-      processPendingQueue();
-      setFocusRefresh(prev => !prev);
+      void (async () => {
+        await processPendingQueue();
+        setFocusRefresh(prev => !prev);
+      })();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') trigger();
@@ -125,6 +133,11 @@ export function useRotinaStepDefs(user: User | null) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, isOnline, processPendingQueue]);
+
+  useRemoteChanges('rotina-steps', useCallback(() => {
+    if (!user || !isOnline) return;
+    setFocusRefresh(prev => !prev);
+  }, [user, isOnline]));
 
   // ─── Load steps, seeding defaults on first-ever run, LWW-merged with remote ──
   useEffect(() => {
@@ -141,7 +154,7 @@ export function useRotinaStepDefs(user: User | null) {
 
     async function load() {
       try {
-        setLoading(true);
+        if (!initialLoadDoneRef.current) setLoading(true);
         // Deliberately unconditional (not gated behind `isOnline`) — the
         // Rotina tab has always shown its steps instantly with zero network
         // dependency, and seedDefaultRotinaSteps already falls back to the
@@ -155,7 +168,10 @@ export function useRotinaStepDefs(user: User | null) {
       } catch (err) {
         logError('Failed to load rotina step definitions', err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          initialLoadDoneRef.current = true;
+          setLoading(false);
+        }
       }
 
       if (isOnline) {
@@ -242,7 +258,7 @@ export function useRotinaStepDefs(user: User | null) {
   const addStep = useCallback(async (title: string, emoji: string, period: RotinaStepDefRecord['period']): Promise<string> => {
     if (!user) return '';
     const id = crypto.randomUUID();
-    const now = Date.now();
+    const now = getServerNow();
     // Not steps.length: the seeded defaults use order 1..14 (from
     // ROTINA_STEPS), not a dense 0-based sequence — steps.length would
     // collide with the last default's order, making a fresh step's "move
@@ -268,7 +284,7 @@ export function useRotinaStepDefs(user: User | null) {
   const patchStep = useCallback(async (id: string, patch: Partial<Pick<RotinaStepDefRecord, 'title' | 'emoji' | 'period' | 'order'>>) => {
     const existing = allSteps.find(s => s.id === id);
     if (!existing) return;
-    const updated: RotinaStepDefRecord = { ...existing, ...patch, updatedAt: Date.now() };
+    const updated: RotinaStepDefRecord = { ...existing, ...patch, updatedAt: getServerNow() };
     setAllSteps(prev => prev.map(s => (s.id === id ? updated : s)));
     await persistStep(updated);
   }, [allSteps, persistStep]);
@@ -281,7 +297,7 @@ export function useRotinaStepDefs(user: User | null) {
   const removeStep = useCallback(async (id: string) => {
     const existing = allSteps.find(s => s.id === id);
     if (!existing) return;
-    const updated: RotinaStepDefRecord = { ...existing, deleted: true, updatedAt: Date.now() };
+    const updated: RotinaStepDefRecord = { ...existing, deleted: true, updatedAt: getServerNow() };
     setAllSteps(prev => prev.map(s => (s.id === id ? updated : s)));
     await persistStep(updated);
   }, [allSteps, persistStep]);
@@ -293,7 +309,7 @@ export function useRotinaStepDefs(user: User | null) {
     const swapIdx = idx + direction;
     if (idx === -1 || swapIdx < 0 || swapIdx >= steps.length) return;
 
-    const now = Date.now();
+    const now = getServerNow();
     const a = steps[idx];
     const b = steps[swapIdx];
     const updatedA: RotinaStepDefRecord = { ...a, order: b.order, updatedAt: now };
